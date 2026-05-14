@@ -245,6 +245,13 @@ export async function getHqTallyAudit(): Promise<HqTallyAudit | null> {
       }
     }
 
+    const allTablesEmpty = coverage.every((row) => row.totalRows === 0);
+    if (allTablesEmpty) {
+      issues.push(
+        "Shared Supabase operational tables are empty. Migrate brand data before using HQ metrics in production.",
+      );
+    }
+
     return {
       generatedAt: new Date().toISOString(),
       runtime: getWebhookRuntimeMeta(),
