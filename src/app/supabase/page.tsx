@@ -1,7 +1,9 @@
+import Link from "next/link";
+import { CheckCircle2, ExternalLink, FileText, Wrench } from "lucide-react";
 import HqShell from "@/app/hq-shell";
+import TallyAuditPanel from "@/app/tally-audit-panel";
 import { PhaseBadge } from "@/app/hq-ui";
 import { brands, migrationPhases } from "@/lib/registry";
-import { CheckCircle2, ExternalLink } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,9 +14,37 @@ export default function SupabasePage() {
       <section className="mb-6">
         <h1 className="text-3xl font-black tracking-tight text-slate-950">Supabase</h1>
         <p className="mt-2 text-sm font-semibold text-slate-600">
-          Shared database migration, brand mapping, dan execution status.
+          Migration status, tally integrity, dan runbook untuk operasi shared database.
         </p>
       </section>
+
+      <section className="mb-6 grid gap-3 md:grid-cols-2">
+        <Link href="/api/hq/audit/tally" className="panel p-4 hover:bg-slate-50">
+          <div className="mb-2 flex items-center gap-2">
+            <Wrench className="h-4 w-4 text-slate-600" />
+            <p className="text-sm font-black text-slate-950">Tally API</p>
+          </div>
+          <p className="text-xs font-semibold text-slate-500">
+            Live payload audit untuk semak mismatch data per brand.
+          </p>
+        </Link>
+        <a
+          href="https://github.com/ezsignal/ezsignal/blob/main/docs/SHARED_DATA_MIGRATION_RUNBOOK.md"
+          target="_blank"
+          rel="noreferrer"
+          className="panel p-4 hover:bg-slate-50"
+        >
+          <div className="mb-2 flex items-center gap-2">
+            <FileText className="h-4 w-4 text-slate-600" />
+            <p className="text-sm font-black text-slate-950">Migration Runbook</p>
+          </div>
+          <p className="text-xs font-semibold text-slate-500">
+            Langkah copy-paste untuk import CSV lama ke shared Supabase.
+          </p>
+        </a>
+      </section>
+
+      <TallyAuditPanel />
 
       <section className="table-shell">
         <div className="border-b border-slate-200 bg-slate-50 px-3 py-3">

@@ -31,13 +31,13 @@ export default async function Home() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button className="icon-button" title="Refresh registry" type="button">
+          <Link href="/" className="icon-button" title="Refresh registry">
             <RefreshCw className="h-4 w-4" />
-          </button>
-          <button className="text-button primary-button" type="button">
+          </Link>
+          <Link href="/webhook" className="text-button primary-button">
             <Settings2 className="h-4 w-4" />
             Configure
-          </button>
+          </Link>
         </div>
       </section>
 
