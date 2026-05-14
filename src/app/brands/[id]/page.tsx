@@ -57,9 +57,9 @@ export default async function BrandPage({
   return (
     <main className="min-h-screen p-6">
       <div className="mx-auto max-w-6xl">
-        <Link href="/" className="mb-6 inline-flex items-center gap-2 text-sm font-black text-slate-600 hover:text-slate-950">
+        <Link href="/brands" className="mb-6 inline-flex items-center gap-2 text-sm font-black text-slate-600 hover:text-slate-950">
           <ArrowLeft className="h-4 w-4" />
-          Back to HQ
+          Back to Brands
         </Link>
 
         <section className="panel mb-4 p-5">
