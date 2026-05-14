@@ -14,6 +14,10 @@ import {
   UsersRound,
 } from "lucide-react";
 import { brands, getBrand, parityBoard } from "@/lib/registry";
+import { getHqOverviewSnapshot } from "@/lib/hqOverview";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export function generateStaticParams() {
   return brands.map((brand) => ({ id: brand.id }));
@@ -30,6 +34,9 @@ export default async function BrandPage({
   if (!brand) {
     notFound();
   }
+
+  const liveSnapshot = await getHqOverviewSnapshot();
+  const liveBrand = liveSnapshot?.brands[brand.id];
 
   const healthRows = [
     ["Canonical brand", brand.canonicalName, CheckCircle2],
@@ -98,19 +105,19 @@ export default async function BrandPage({
         <section className="metric-grid mb-4">
           <div className="panel p-4">
             <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">Active Users</p>
-            <p className="mono mt-3 text-3xl font-black text-slate-950">{brand.activeUsers}</p>
+            <p className="mono mt-3 text-3xl font-black text-slate-950">{liveBrand?.activeUsers ?? brand.activeUsers}</p>
           </div>
           <div className="panel p-4">
             <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">Expired Users</p>
-            <p className="mono mt-3 text-3xl font-black text-slate-950">{brand.expiredUsers}</p>
+            <p className="mono mt-3 text-3xl font-black text-slate-950">{liveBrand?.expiredUsers ?? brand.expiredUsers}</p>
           </div>
           <div className="panel p-4">
             <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">Keys Issued</p>
-            <p className="mono mt-3 text-3xl font-black text-slate-950">{brand.keysIssued}</p>
+            <p className="mono mt-3 text-3xl font-black text-slate-950">{liveBrand?.keysIssued ?? brand.keysIssued}</p>
           </div>
           <div className="panel p-4">
             <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">Signals Today</p>
-            <p className="mono mt-3 text-3xl font-black text-slate-950">{brand.signalsToday}</p>
+            <p className="mono mt-3 text-3xl font-black text-slate-950">{liveBrand?.signalsToday ?? brand.signalsToday}</p>
           </div>
         </section>
 

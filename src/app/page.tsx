@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import WebhookStatusPanel from "@/app/webhook-status-panel";
 import PerformanceEditorPanel from "@/app/performance-editor-panel";
+import TallyAuditPanel from "@/app/tally-audit-panel";
 import {
   brands,
   hqModules,
@@ -212,6 +213,8 @@ export default async function Home() {
           <MetricCard label="Keys Issued" value={String(total.keysIssued)} icon={KeyRound} />
           <MetricCard label="Signals Today" value={String(total.signalsToday)} icon={RadioTower} />
         </section>
+
+        <TallyAuditPanel />
 
         <section className="mb-6 grid gap-3 lg:grid-cols-[1fr_360px]">
           <div className="panel p-4">
