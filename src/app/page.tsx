@@ -30,6 +30,9 @@ import {
 } from "@/lib/registry";
 import { getHqOverviewSnapshot } from "@/lib/hqOverview";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const fallbackTotals = totals();
 const phasePercent = migrationProgress();
 
