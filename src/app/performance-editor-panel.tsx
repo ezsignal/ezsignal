@@ -67,17 +67,6 @@ function formatDate(value: string) {
   return date.toLocaleString("en-GB", { hour12: false });
 }
 
-function toIntervalBucketKey(createdAtIso: string, mode: "scalping" | "intraday") {
-  const date = new Date(createdAtIso);
-  const ms = date.getTime();
-  if (!Number.isFinite(ms)) return createdAtIso;
-  const intervalMs = mode === "intraday"
-    ? 4 * 60 * 60 * 1000
-    : 30 * 60 * 1000;
-  const bucketStartMs = Math.floor(ms / intervalMs) * intervalMs;
-  return new Date(bucketStartMs).toISOString();
-}
-
 function csvEscape(value: string | number | null | undefined) {
   const text = value === null || value === undefined ? "" : String(value);
   return `"${text.replace(/"/g, "\"\"")}"`;
@@ -132,6 +121,7 @@ export default function PerformanceEditorPanel() {
   const [importingCsv, setImportingCsv] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
   const [importSyncAllBrands, setImportSyncAllBrands] = useState(true);
+  const [showAuditTimeline, setShowAuditTimeline] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editorEnabled, setEditorEnabled] = useState(false);
@@ -193,6 +183,7 @@ export default function PerformanceEditorPanel() {
       const buildBaseQuery = () => {
         const q = new URLSearchParams();
         if (brandFilter !== "all") q.set("brandId", brandFilter);
+        if (brandFilter === "all") q.set("consolidated", "1");
         if (modeFilter !== "all") q.set("mode", modeFilter);
         if (typeFilter !== "all") q.set("type", typeFilter);
         if (outcomeFilter !== "all") q.set("outcome", outcomeFilter);
@@ -202,7 +193,7 @@ export default function PerformanceEditorPanel() {
         return q;
       };
 
-      const shouldFetchAllForClientPagination = unifiedAllBrands || rowsPerPage === "all";
+      const shouldFetchAllForClientPagination = rowsPerPage === "all";
 
       if (shouldFetchAllForClientPagination) {
         const allRows: PerformanceRow[] = [];
@@ -264,7 +255,7 @@ export default function PerformanceEditorPanel() {
     } finally {
       setLoading(false);
     }
-  }, [brandFilter, modeFilter, typeFilter, outcomeFilter, rangeStartIso, rangeEndIso, searchQuery, rowsPerPage, page, ensureDraft, unifiedAllBrands]);
+  }, [brandFilter, modeFilter, typeFilter, outcomeFilter, rangeStartIso, rangeEndIso, searchQuery, rowsPerPage, page, ensureDraft]);
 
   const loadAuditRows = useCallback(async () => {
     setLoadingAudit(true);
@@ -286,38 +277,16 @@ export default function PerformanceEditorPanel() {
   useEffect(() => {
     const kickoff = setTimeout(() => {
       void loadRows();
-      void loadAuditRows();
+      if (showAuditTimeline) void loadAuditRows();
     }, 0);
     return () => clearTimeout(kickoff);
-  }, [loadRows, loadAuditRows]);
+  }, [loadRows, loadAuditRows, showAuditTimeline]);
 
-  const baseRows = useMemo(() => {
-    if (!unifiedAllBrands) return rows;
-    const sorted = [...rows].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    const deduped = new Map<string, PerformanceRow>();
-
-    for (const row of sorted) {
-      const key = [
-        row.pair,
-        row.mode,
-        row.type,
-        row.outcome,
-        toIntervalBucketKey(row.created_at, row.mode),
-      ].join("|");
-      if (!deduped.has(key)) {
-        deduped.set(key, row);
-      }
-    }
-
-    return Array.from(deduped.values());
-  }, [rows, unifiedAllBrands]);
+  const baseRows = useMemo(() => rows, [rows]);
 
   const filteredRows = useMemo(() => baseRows, [baseRows]);
 
-  const effectiveTotalRows = useMemo(() => {
-    if (unifiedAllBrands) return filteredRows.length;
-    return totalRows;
-  }, [filteredRows.length, totalRows, unifiedAllBrands]);
+  const effectiveTotalRows = useMemo(() => totalRows, [totalRows]);
 
   const totalPages = useMemo(() => {
     if (rowsPerPage === "all") return 1;
@@ -326,12 +295,8 @@ export default function PerformanceEditorPanel() {
 
   const visibleRows = useMemo(() => {
     if (rowsPerPage === "all") return filteredRows;
-    if (unifiedAllBrands) {
-      const start = (page - 1) * rowsPerPage;
-      return filteredRows.slice(start, start + rowsPerPage);
-    }
     return filteredRows;
-  }, [filteredRows, page, rowsPerPage, unifiedAllBrands]);
+  }, [filteredRows, rowsPerPage]);
 
   useEffect(() => {
     setPage(1);
@@ -397,7 +362,8 @@ export default function PerformanceEditorPanel() {
       } else {
         setMessage(`Saved ${row.id.slice(0, 8)}.`);
       }
-      await Promise.all([loadRows(), loadAuditRows()]);
+      await loadRows();
+      if (showAuditTimeline) await loadAuditRows();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed updating performance log.");
     } finally {
@@ -432,7 +398,8 @@ export default function PerformanceEditorPanel() {
           ? `Deleted ${json.deleted ?? 0} rows across brands.`
           : `Deleted ${row.id.slice(0, 8)}.`,
       );
-      await Promise.all([loadRows(), loadAuditRows()]);
+      await loadRows();
+      if (showAuditTimeline) await loadAuditRows();
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : "Failed deleting performance log.");
     } finally {
@@ -467,7 +434,8 @@ export default function PerformanceEditorPanel() {
           : `Deleted ${json.deleted ?? selectedIds.length} rows.`,
       );
       setSelectedIds([]);
-      await Promise.all([loadRows(), loadAuditRows()]);
+      await loadRows();
+      if (showAuditTimeline) await loadAuditRows();
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : "Failed deleting selected rows.");
     } finally {
@@ -511,7 +479,8 @@ export default function PerformanceEditorPanel() {
         return;
       }
       setMessage(`Bulk updated ${json.updated ?? selectedIds.length} rows. Audit: ${json.auditLogged ?? 0}.`);
-      await Promise.all([loadRows(), loadAuditRows()]);
+      await loadRows();
+      if (showAuditTimeline) await loadAuditRows();
       setBulkMode("keep");
       setBulkOutcome("keep");
       setBulkNote("");
@@ -611,7 +580,8 @@ export default function PerformanceEditorPanel() {
       setMessage(
         `Import done${json.propagatedAllBrands ? " (sync all brands)" : ""}. SourceRows: ${json.sourceRows ?? 0}, Imported: ${json.imported ?? 0}, CSV dedupe: ${json.csvDuplicatesCollapsed ?? 0}, DB pruned: ${json.dbDuplicatesPruned ?? 0}, Updated: ${json.updated ?? 0}, Inserted: ${json.inserted ?? 0}, Skipped: ${json.skipped ?? 0}, AuditErrors: ${json.auditErrors ?? 0}.`,
       );
-      await Promise.all([loadRows(), loadAuditRows()]);
+      await loadRows();
+      if (showAuditTimeline) await loadAuditRows();
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : "Failed importing CSV.");
     } finally {
@@ -640,9 +610,9 @@ export default function PerformanceEditorPanel() {
           className="text-button"
           onClick={() => {
             void loadRows();
-            void loadAuditRows();
+            if (showAuditTimeline) void loadAuditRows();
           }}
-          disabled={loading || loadingAudit}
+          disabled={loading || (showAuditTimeline && loadingAudit)}
         >
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           Refresh
@@ -984,41 +954,60 @@ export default function PerformanceEditorPanel() {
       <div className="mt-5 rounded-lg border border-slate-200 bg-white p-3">
         <div className="mb-2 flex items-center justify-between gap-2">
           <p className="text-xs font-black uppercase tracking-[0.08em] text-slate-500">Recent Audit Timeline</p>
-          <p className="text-xs font-bold text-slate-500">{loadingAudit ? "Loading..." : `${auditRows.length} edits`}</p>
+          <div className="flex items-center gap-2">
+            {showAuditTimeline ? (
+              <p className="text-xs font-bold text-slate-500">{loadingAudit ? "Loading..." : `${auditRows.length} edits`}</p>
+            ) : null}
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => {
+                const next = !showAuditTimeline;
+                setShowAuditTimeline(next);
+                if (next) void loadAuditRows();
+              }}
+            >
+              {showAuditTimeline ? "Hide Audit" : "Show Audit"}
+            </button>
+          </div>
         </div>
-        <div className="max-h-64 overflow-auto rounded border border-slate-200">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Brand</th>
-                <th>Tick</th>
-                <th>Change</th>
-                <th>Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {auditRows.slice(0, 100).map((row) => (
-                <tr key={row.id}>
-                  <td className="text-xs font-bold text-slate-600">{formatDate(row.created_at)}</td>
-                  <td className="text-xs font-black uppercase tracking-wide text-slate-700">{row.brand_id}</td>
-                  <td className="mono text-xs">{row.log_id.slice(0, 8)}</td>
-                  <td className="text-xs font-bold text-slate-700">
-                    {(row.previous_outcome ?? "-").toUpperCase()} {" -> "} {(row.next_outcome ?? "-").toUpperCase()}
-                  </td>
-                  <td className="text-xs font-semibold text-slate-600">{row.reason?.trim() || "-"}</td>
-                </tr>
-              ))}
-              {auditRows.length === 0 ? (
+        {showAuditTimeline ? (
+          <div className="max-h-64 overflow-auto rounded border border-slate-200">
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <td colSpan={5} className="text-center text-xs font-bold text-slate-500">
-                    No audit rows found.
-                  </td>
+                  <th>Time</th>
+                  <th>Brand</th>
+                  <th>Tick</th>
+                  <th>Change</th>
+                  <th>Reason</th>
                 </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {auditRows.slice(0, 100).map((row) => (
+                  <tr key={row.id}>
+                    <td className="text-xs font-bold text-slate-600">{formatDate(row.created_at)}</td>
+                    <td className="text-xs font-black uppercase tracking-wide text-slate-700">{row.brand_id}</td>
+                    <td className="mono text-xs">{row.log_id.slice(0, 8)}</td>
+                    <td className="text-xs font-bold text-slate-700">
+                      {(row.previous_outcome ?? "-").toUpperCase()} {" -> "} {(row.next_outcome ?? "-").toUpperCase()}
+                    </td>
+                    <td className="text-xs font-semibold text-slate-600">{row.reason?.trim() || "-"}</td>
+                  </tr>
+                ))}
+                {auditRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="text-center text-xs font-bold text-slate-500">
+                      No audit rows found.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-xs font-semibold text-slate-500">Audit timeline is collapsed to keep dashboard fast.</p>
+        )}
       </div>
     </section>
   );

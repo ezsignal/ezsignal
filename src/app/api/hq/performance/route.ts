@@ -187,19 +187,20 @@ function toMinuteBucket(value: string) {
   return d.toISOString().slice(0, 16);
 }
 
-function dedupePerformanceRows(rows: PerformanceRow[]) {
+function dedupePerformanceRows(rows: PerformanceRow[], consolidatedAllBrands = false) {
   const seen = new Set<string>();
   const out: PerformanceRow[] = [];
 
   for (const row of rows) {
-    const key = [
-      row.brand_id,
+    const keyParts = [
       row.pair,
       toMinuteBucket(row.created_at),
       row.mode,
       row.type,
       row.outcome,
-    ].join("|");
+    ];
+    if (!consolidatedAllBrands) keyParts.unshift(row.brand_id);
+    const key = keyParts.join("|");
 
     if (seen.has(key)) continue;
     seen.add(key);
@@ -665,6 +666,7 @@ export async function GET(request: Request) {
   const offsetRaw = Number(searchParams.get("offset") ?? "0");
   const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(5000, Math.floor(limitRaw))) : 1000;
   const offset = Number.isFinite(offsetRaw) ? Math.max(0, Math.floor(offsetRaw)) : 0;
+  const consolidatedAllBrands = (searchParams.get("consolidated") ?? "0") === "1" && !filters.brandId;
 
   const fetchLimit = 20000;
   const dataQuery = applyFilters(
@@ -699,7 +701,7 @@ export async function GET(request: Request) {
     });
   }
 
-  const dedupedRows = dedupePerformanceRows(rows);
+  const dedupedRows = dedupePerformanceRows(rows, consolidatedAllBrands);
   const pagedRows = dedupedRows.slice(offset, offset + limit);
 
   if (format === "csv") {
@@ -765,7 +767,7 @@ export async function POST(request: Request) {
     if (!imported.ok) {
       return NextResponse.json({ ok: false, error: imported.error, skipped: imported.skipped ?? 0 }, { status: imported.status });
     }
-    return NextResponse.json({ ok: true, ...imported, flags, runtime: getWebhookRuntimeMeta() });
+    return NextResponse.json({ ...imported, flags, runtime: getWebhookRuntimeMeta() });
   }
 
   const logId = body.logId?.trim();
