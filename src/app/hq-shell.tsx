@@ -1,23 +1,20 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import HqNav from "@/app/hq-nav";
-import { getHqOverviewSnapshot } from "@/lib/hqOverview";
+import HqThemeToggle from "@/app/hq-theme-toggle";
+import { getWebhookRuntimeMeta } from "@/lib/hqWebhookRuntime";
 
 export default async function HqShell({
   children,
 }: {
   children: ReactNode;
 }) {
-  const liveSnapshot = await getHqOverviewSnapshot();
-  const modeLabel = liveSnapshot ? "Live database" : "Demo registry";
-  const modeNote = liveSnapshot
-    ? "Metrics now read from shared Supabase in real time."
-    : "Supabase metrics are unavailable, showing fallback registry data.";
-  const modeSyncedAt = liveSnapshot
-    ? new Date(liveSnapshot.generatedAt).toLocaleString("en-GB", {
-        hour12: false,
-      })
-    : null;
+  const runtimeMeta = getWebhookRuntimeMeta();
+  const modeLabel = runtimeMeta.backend === "database" ? "Live database" : "Fallback mode";
+  const modeNote = runtimeMeta.dbConfigured
+    ? "Shared Supabase connection configured."
+    : "HQ Supabase service role key/url missing.";
+  const modeSyncedAt = new Date().toLocaleString("en-GB", { hour12: false });
 
   return (
     <div className="shell">
@@ -35,6 +32,9 @@ export default async function HqShell({
         </Link>
 
         <HqNav />
+        <div className="mt-4">
+          <HqThemeToggle />
+        </div>
 
         <div className="mt-8 rounded-lg border border-slate-200 bg-slate-50 p-3">
           <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">

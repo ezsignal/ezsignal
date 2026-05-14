@@ -12,6 +12,8 @@ export type AccessKeyRow = {
   id: string;
   brandId: BrandId;
   label: string | null;
+  clientName: string | null;
+  packageName: string | null;
   keyPreview: string;
   isActive: boolean;
   expiredAt: string | null;
@@ -81,6 +83,51 @@ function maskSecret(value: string | null | undefined) {
   return `${clean.slice(0, 4)}...${clean.slice(-2)}`;
 }
 
+function normalizePackageName(packageName: unknown) {
+  const clean = typeof packageName === "string" ? packageName.trim() : "";
+  if (!clean) return "";
+  if (/trial/i.test(clean)) return "Trial 3D";
+  const packageMatch = clean.match(/^package\s*(\d+)\s*d$/i);
+  if (packageMatch) return `Package ${Number(packageMatch[1])}D`;
+  return clean;
+}
+
+function normalizeLabelFromAccessKey(label: unknown) {
+  const clean = typeof label === "string" ? label.trim() : "";
+  if (!clean) return null;
+  const pipeIndex = clean.indexOf("|");
+  if (pipeIndex < 0) return clean;
+  const left = clean.slice(0, pipeIndex).trim();
+  const right = clean.slice(pipeIndex + 1).trim();
+  const normalizedRight = normalizePackageName(right);
+  if (!left) return normalizedRight || clean;
+  if (!normalizedRight) return left;
+  return `${left} | ${normalizedRight}`;
+}
+
+function composeLabelFromSubscriber(nameRaw: unknown, packageRaw: unknown) {
+  const name = typeof nameRaw === "string" ? nameRaw.trim() : "";
+  const packageName = normalizePackageName(packageRaw);
+  if (!name && !packageName) return null;
+  if (!name) return packageName || null;
+  if (!packageName) return name;
+  return `${name} | ${packageName}`;
+}
+
+function splitClientAndPackage(label: string | null) {
+  const clean = label?.trim() ?? "";
+  if (!clean) return { clientName: null as string | null, packageName: null as string | null };
+  const pipeIndex = clean.indexOf("|");
+  if (pipeIndex < 0) return { clientName: clean, packageName: null as string | null };
+
+  const left = clean.slice(0, pipeIndex).trim();
+  const right = normalizePackageName(clean.slice(pipeIndex + 1).trim());
+  return {
+    clientName: left || null,
+    packageName: right || null,
+  };
+}
+
 export async function loadAccessKeysPageData(input: {
   brandId?: string;
   limit?: number;
@@ -99,7 +146,7 @@ export async function loadAccessKeysPageData(input: {
 
   let query = supabase
     .from("access_keys")
-    .select("id, brand_id, key, key_hash, label, is_active, expired_at, last_login_at, created_at")
+    .select("id, brand_id, subscriber_id, key, key_hash, label, is_active, expired_at, last_login_at, created_at")
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -112,13 +159,43 @@ export async function loadAccessKeysPageData(input: {
     return { ok: false as const, error: error.message };
   }
 
+  const subscriberIds = [...new Set((data ?? [])
+    .map((row) => (typeof row.subscriber_id === "string" ? row.subscriber_id : ""))
+    .filter((id) => id.length > 0))];
+
+  const subscriberLookup = new Map<string, { name: string | null; packageName: string | null }>();
+  if (subscriberIds.length > 0) {
+    const { data: subscriberRows } = await supabase
+      .from("subscribers")
+      .select("id,brand_id,name,package_name")
+      .in("id", subscriberIds);
+
+    for (const row of subscriberRows ?? []) {
+      const key = `${String(row.brand_id)}:${String(row.id)}`;
+      subscriberLookup.set(key, {
+        name: typeof row.name === "string" ? row.name : null,
+        packageName: typeof row.package_name === "string" ? row.package_name : null,
+      });
+    }
+  }
+
   const rows: AccessKeyRow[] = (data ?? []).map((row) => {
     const keyRaw = typeof row.key === "string" ? row.key : null;
     const hashRaw = typeof row.key_hash === "string" ? row.key_hash : null;
+    const subscriberId = typeof row.subscriber_id === "string" ? row.subscriber_id : null;
+    const subscriberKey = subscriberId ? `${String(row.brand_id)}:${subscriberId}` : "";
+    const subscriber = subscriberLookup.get(subscriberKey);
+    const resolvedLabel =
+      composeLabelFromSubscriber(subscriber?.name, subscriber?.packageName) ??
+      normalizeLabelFromAccessKey(row.label);
+    const { clientName, packageName } = splitClientAndPackage(resolvedLabel);
+
     return {
       id: String(row.id),
       brandId: String(row.brand_id) as BrandId,
-      label: typeof row.label === "string" ? row.label : null,
+      label: resolvedLabel,
+      clientName,
+      packageName,
       keyPreview: maskSecret(keyRaw ?? hashRaw),
       isActive: Boolean(row.is_active),
       expiredAt: row.expired_at ? String(row.expired_at) : null,

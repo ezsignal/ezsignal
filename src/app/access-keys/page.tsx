@@ -86,7 +86,8 @@ export default async function AccessKeysPage({
                 <thead>
                   <tr>
                     <th>Brand</th>
-                    <th>Label</th>
+                    <th>Client</th>
+                    <th>Package</th>
                     <th>Key</th>
                     <th>Status</th>
                     <th>Last Login</th>
@@ -98,7 +99,8 @@ export default async function AccessKeysPage({
                   {data.rows.map((row) => (
                     <tr key={row.id}>
                       <td className="mono text-xs">{row.brandId}</td>
-                      <td>{row.label ?? "-"}</td>
+                      <td>{row.clientName ?? "-"}</td>
+                      <td>{row.packageName ?? "-"}</td>
                       <td className="mono text-xs">{row.keyPreview}</td>
                       <td>
                         <span
@@ -118,7 +120,7 @@ export default async function AccessKeysPage({
                   ))}
                   {data.rows.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-center text-xs font-bold text-slate-500">
+                      <td colSpan={8} className="text-center text-xs font-bold text-slate-500">
                         No access key data yet.
                       </td>
                     </tr>
