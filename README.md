@@ -16,6 +16,7 @@ Central operations dashboard for EZ SIGNAL brands.
 - Runtime status: `GET /api/hq/dispatch/status`
 - Performance editor API: `GET/POST /api/hq/performance`
 - Go-live runbook: `docs/VERCEL_GO_LIVE_CHECKLIST.md`
+- TradingView templates: `docs/HQ_TRADINGVIEW_ALERTS.md`
 - Production smoke test helper: `scripts/hq-prod-smoke.ps1`
 
 Production security:

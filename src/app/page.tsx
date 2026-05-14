@@ -28,8 +28,9 @@ import {
   systemLanes,
   totals,
 } from "@/lib/registry";
+import { getHqOverviewSnapshot } from "@/lib/hqOverview";
 
-const total = totals();
+const fallbackTotals = totals();
 const phasePercent = migrationProgress();
 
 const statusStyles = {
@@ -51,7 +52,15 @@ const checkStyles = {
   todo: "text-rose-700 bg-rose-50 border-rose-200",
 };
 
-function Sidebar() {
+function Sidebar({
+  modeLabel,
+  modeNote,
+  modeSyncedAt,
+}: {
+  modeLabel: string;
+  modeNote: string;
+  modeSyncedAt: string | null;
+}) {
   return (
     <aside className="sidebar">
       <Link href="/" className="mb-8 flex items-center gap-3">
@@ -88,10 +97,15 @@ function Sidebar() {
 
       <div className="mt-8 rounded-lg border border-slate-200 bg-slate-50 p-3">
         <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Mode</p>
-        <p className="mt-2 text-sm font-black text-slate-950">Demo registry</p>
+        <p className="mt-2 text-sm font-black text-slate-950">{modeLabel}</p>
         <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-          Supabase connection will be added after shared schema and RLS are approved.
+          {modeNote}
         </p>
+        {modeSyncedAt ? (
+          <p className="mt-2 text-[11px] font-bold text-slate-500">
+            Synced: {modeSyncedAt}
+          </p>
+        ) : null}
       </div>
     </aside>
   );
@@ -149,10 +163,25 @@ function CheckBadge({ status }: { status: keyof typeof checkStyles }) {
   );
 }
 
-export default function Home() {
+export default async function Home() {
+  const liveSnapshot = await getHqOverviewSnapshot();
+  const total = liveSnapshot?.totals ?? fallbackTotals;
+  const modeLabel = liveSnapshot ? "Live database" : "Demo registry";
+  const modeNote = liveSnapshot
+    ? "Metrics now read from shared Supabase in real time."
+    : "Supabase metrics are unavailable, showing fallback registry data.";
+  const modeSyncedAt = liveSnapshot
+    ? new Date(liveSnapshot.generatedAt).toLocaleString("en-GB", { hour12: false })
+    : null;
+  const lanes = systemLanes.map((lane) =>
+    lane.label === "Users"
+      ? { ...lane, value: `${total.activeUsers} active` }
+      : lane,
+  );
+
   return (
     <div className="shell">
-      <Sidebar />
+      <Sidebar modeLabel={modeLabel} modeNote={modeNote} modeSyncedAt={modeSyncedAt} />
 
       <main className="main">
         <section className="mb-6 flex flex-wrap items-start justify-between gap-4">
@@ -230,6 +259,13 @@ export default function Home() {
             <div className="brand-grid">
               {brands.map((brand) => (
                 <Link key={brand.id} href={`/brands/${brand.id}`} className="soft-panel block p-4 transition hover:border-slate-400 hover:bg-white">
+                  {(() => {
+                    const liveBrand = liveSnapshot?.brands[brand.id];
+                    const activeUsers = liveBrand?.activeUsers ?? brand.activeUsers;
+                    const keysIssued = liveBrand?.keysIssued ?? brand.keysIssued;
+                    const signalsToday = liveBrand?.signalsToday ?? brand.signalsToday;
+                    return (
+                      <>
                   <div className="mb-4 flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div
@@ -254,18 +290,21 @@ export default function Home() {
                   </div>
                   <div className="mt-4 grid grid-cols-3 gap-2 text-center">
                     <div>
-                      <p className="mono text-lg font-black text-slate-950">{brand.activeUsers}</p>
+                      <p className="mono text-lg font-black text-slate-950">{activeUsers}</p>
                       <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-500">Active</p>
                     </div>
                     <div>
-                      <p className="mono text-lg font-black text-slate-950">{brand.keysIssued}</p>
+                      <p className="mono text-lg font-black text-slate-950">{keysIssued}</p>
                       <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-500">Keys</p>
                     </div>
                     <div>
-                      <p className="mono text-lg font-black text-slate-950">{brand.signalsToday}</p>
+                      <p className="mono text-lg font-black text-slate-950">{signalsToday}</p>
                       <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-500">Signals</p>
                     </div>
                   </div>
+                      </>
+                    );
+                  })()}
                 </Link>
               ))}
             </div>
@@ -274,7 +313,7 @@ export default function Home() {
           <div className="panel p-4">
             <h2 className="text-lg font-black text-slate-950">System Lanes</h2>
             <div className="mt-4 space-y-2">
-              {systemLanes.map((lane) => (
+              {lanes.map((lane) => (
                 <div key={lane.label} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-3">
                   <div className="flex items-center gap-3">
                     <div className="icon-button" aria-hidden="true">
