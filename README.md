@@ -19,6 +19,9 @@ Central operations dashboard for EZ SIGNAL brands.
 - Go-live runbook: `docs/VERCEL_GO_LIVE_CHECKLIST.md`
 - TradingView templates: `docs/HQ_TRADINGVIEW_ALERTS.md`
 - Production smoke test helper: `scripts/hq-prod-smoke.ps1`
+- Shared data migration runbook: `docs/SHARED_DATA_MIGRATION_RUNBOOK.md`
+- Shared data migration SQL playbook: `supabase/shared-data-migration.playbook.sql`
+- Tally gate script: `scripts/hq-tally-check.ps1`
 
 Production security:
 

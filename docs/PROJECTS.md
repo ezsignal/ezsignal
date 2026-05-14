@@ -21,6 +21,8 @@ This file is a working registry for the four EZ SIGNAL distributions.
 - Architecture plan: `docs/SHARED_SUPABASE_PLAN.md`
 - Webhook routing plan: `docs/HQ_WEBHOOK_ROUTING_PLAN.md`
 - Draft schema: `supabase/shared-schema.draft.sql`
+- Data migration playbook: `supabase/shared-data-migration.playbook.sql`
+- Data migration runbook: `docs/SHARED_DATA_MIGRATION_RUNBOOK.md`
 - Current decision: one shared Supabase project is acceptable only after public brand apps stop relying on broad anon table access.
 - Current progress: access key login/session checks now run through server API routes in all four brand apps.
 
