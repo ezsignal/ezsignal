@@ -82,12 +82,15 @@ create table if not exists public.signals (
   id uuid primary key default gen_random_uuid(),
   brand_id text not null references public.brands(id) on delete cascade,
   pair text not null default 'XAUUSD',
+  mode text not null default 'scalping' check (mode in ('scalping', 'intraday')),
   action text not null check (action in ('buy', 'sell')),
   entry numeric not null,
+  live_price numeric,
   stop_loss numeric,
   take_profit_1 numeric,
   take_profit_2 numeric,
   take_profit_3 numeric,
+  max_floating_pips numeric,
   status text not null default 'active' check (status in ('active', 'closed', 'cancelled')),
   note text,
   created_at timestamptz not null default now(),
@@ -99,9 +102,12 @@ create table if not exists public.performance_logs (
   brand_id text not null references public.brands(id) on delete cascade,
   signal_id uuid references public.signals(id) on delete set null,
   pair text not null default 'XAUUSD',
+  mode text not null default 'scalping' check (mode in ('scalping', 'intraday')),
   action text not null check (action in ('buy', 'sell')),
   outcome text not null check (outcome in ('tp1', 'tp2', 'tp3', 'sl', 'be')),
   points numeric,
+  net_pips numeric,
+  peak_pips numeric,
   price numeric,
   created_at timestamptz not null default now()
 );
@@ -157,6 +163,80 @@ create table if not exists public.telegram_bots (
   updated_at timestamptz not null default now(),
   unique (brand_id, bot_name)
 );
+
+-- Admin/dashboard compatibility columns for signal fanout and performance editing.
+alter table public.signals add column if not exists mode text not null default 'scalping';
+alter table public.signals add column if not exists live_price numeric;
+alter table public.signals add column if not exists max_floating_pips numeric;
+alter table public.performance_logs add column if not exists mode text not null default 'scalping';
+alter table public.performance_logs add column if not exists net_pips numeric;
+alter table public.performance_logs add column if not exists peak_pips numeric;
+
+update public.signals
+set mode = 'scalping'
+where mode is null
+   or mode not in ('scalping', 'intraday');
+
+update public.performance_logs
+set mode = 'scalping'
+where mode is null
+   or mode not in ('scalping', 'intraday');
+
+update public.performance_logs
+set net_pips = points
+where net_pips is null
+  and points is not null;
+
+update public.performance_logs
+set peak_pips = coalesce(peak_pips, net_pips, points)
+where peak_pips is null
+  and coalesce(net_pips, points) is not null;
+
+do $$
+declare
+  constraint_name text;
+begin
+  for constraint_name in
+    select con.conname
+    from pg_constraint con
+    join pg_class rel on rel.oid = con.conrelid
+    join pg_namespace nsp on nsp.oid = rel.relnamespace
+    where nsp.nspname = 'public'
+      and rel.relname = 'signals'
+      and con.contype = 'c'
+      and con.conname like '%mode%'
+  loop
+    execute format('alter table public.signals drop constraint %I', constraint_name);
+  end loop;
+
+  alter table public.signals
+    add constraint signals_mode_check
+    check (mode in ('scalping', 'intraday'));
+end;
+$$;
+
+do $$
+declare
+  constraint_name text;
+begin
+  for constraint_name in
+    select con.conname
+    from pg_constraint con
+    join pg_class rel on rel.oid = con.conrelid
+    join pg_namespace nsp on nsp.oid = rel.relnamespace
+    where nsp.nspname = 'public'
+      and rel.relname = 'performance_logs'
+      and con.contype = 'c'
+      and con.conname like '%mode%'
+  loop
+    execute format('alter table public.performance_logs drop constraint %I', constraint_name);
+  end loop;
+
+  alter table public.performance_logs
+    add constraint performance_logs_mode_check
+    check (mode in ('scalping', 'intraday'));
+end;
+$$;
 
 create table if not exists public.landing_settings (
   brand_id text primary key references public.brands(id) on delete cascade,
@@ -574,3 +654,53 @@ on conflict (id) do update set
 -- 3. performance log feed
 -- 4. security alert insert
 -- 5. package link redemption
+
+-- Prevent noisy duplicate performance inserts (same payload within 60s window).
+create index if not exists idx_performance_logs_brand_created_at
+  on public.performance_logs (brand_id, created_at desc);
+
+create or replace function hq_migration.prevent_duplicate_performance_logs()
+returns trigger
+language plpgsql
+as $$
+declare
+  is_duplicate boolean;
+begin
+  if new.created_at is null then
+    new.created_at := now();
+  end if;
+
+  if new.mode is null then
+    new.mode := 'scalping';
+  end if;
+
+  select exists (
+    select 1
+    from public.performance_logs p
+    where p.brand_id = new.brand_id
+      and coalesce(p.pair, 'XAUUSD') = coalesce(new.pair, 'XAUUSD')
+      and coalesce(p.mode, 'scalping') = coalesce(new.mode, 'scalping')
+      and coalesce(p.action, 'buy') = coalesce(new.action, 'buy')
+      and coalesce(p.outcome, 'be') = coalesce(new.outcome, 'be')
+      and coalesce(round(p.net_pips::numeric, 4), round(p.points::numeric, 4), 0)
+        = coalesce(round(new.net_pips::numeric, 4), round(new.points::numeric, 4), 0)
+      and coalesce(round(p.peak_pips::numeric, 4), round(p.points::numeric, 4), 0)
+        = coalesce(round(new.peak_pips::numeric, 4), round(new.points::numeric, 4), 0)
+      and abs(extract(epoch from (p.created_at - new.created_at))) < 60
+  ) into is_duplicate;
+
+  if is_duplicate then
+    return null;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_prevent_duplicate_performance_logs
+on public.performance_logs;
+
+create trigger trg_prevent_duplicate_performance_logs
+before insert on public.performance_logs
+for each row
+execute function hq_migration.prevent_duplicate_performance_logs();

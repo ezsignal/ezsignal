@@ -47,11 +47,46 @@ create table if not exists hq_migration.stage_signals (
   like public.signals including defaults
 );
 alter table hq_migration.stage_signals add column if not exists source_brand text;
+alter table public.signals add column if not exists mode text not null default 'scalping';
+alter table public.signals add column if not exists live_price numeric;
+alter table public.signals add column if not exists max_floating_pips numeric;
+alter table hq_migration.stage_signals add column if not exists mode text;
+alter table hq_migration.stage_signals add column if not exists type text;
+alter table hq_migration.stage_signals add column if not exists entry_target numeric;
+alter table hq_migration.stage_signals add column if not exists live_price numeric;
+alter table hq_migration.stage_signals add column if not exists sl numeric;
+alter table hq_migration.stage_signals add column if not exists tp1 numeric;
+alter table hq_migration.stage_signals add column if not exists tp2 numeric;
+alter table hq_migration.stage_signals add column if not exists tp3 numeric;
+alter table hq_migration.stage_signals add column if not exists max_floating_pips numeric;
 
 create table if not exists hq_migration.stage_performance_logs (
   like public.performance_logs including defaults
 );
 alter table hq_migration.stage_performance_logs add column if not exists source_brand text;
+alter table public.performance_logs add column if not exists mode text not null default 'scalping';
+alter table public.performance_logs add column if not exists net_pips numeric;
+alter table public.performance_logs add column if not exists peak_pips numeric;
+update public.signals
+set mode = 'scalping'
+where mode is null
+   or mode not in ('scalping', 'intraday');
+update public.performance_logs
+set mode = 'scalping'
+where mode is null
+   or mode not in ('scalping', 'intraday');
+update public.performance_logs
+set net_pips = points
+where net_pips is null
+  and points is not null;
+update public.performance_logs
+set peak_pips = coalesce(peak_pips, net_pips, points)
+where peak_pips is null
+  and coalesce(net_pips, points) is not null;
+alter table hq_migration.stage_performance_logs add column if not exists mode text;
+alter table hq_migration.stage_performance_logs add column if not exists type text;
+alter table hq_migration.stage_performance_logs add column if not exists net_pips numeric;
+alter table hq_migration.stage_performance_logs add column if not exists peak_pips numeric;
 
 -- Optional helper to clear stage rows per source brand before re-importing CSV.
 create or replace function hq_migration.clear_stage(p_source_brand text)
@@ -185,12 +220,15 @@ begin
     id,
     brand_id,
     pair,
+    mode,
     action,
     entry,
+    live_price,
     stop_loss,
     take_profit_1,
     take_profit_2,
     take_profit_3,
+    max_floating_pips,
     status,
     note,
     created_at,
@@ -200,12 +238,15 @@ begin
     sg.id,
     p_target_brand,
     coalesce(sg.pair, 'XAUUSD'),
-    sg.action,
-    sg.entry,
-    sg.stop_loss,
-    sg.take_profit_1,
-    sg.take_profit_2,
-    sg.take_profit_3,
+    coalesce(nullif(sg.mode, ''), 'scalping'),
+    coalesce(nullif(sg.action, ''), nullif(sg.type, ''), 'buy'),
+    coalesce(sg.entry, sg.entry_target),
+    sg.live_price,
+    coalesce(sg.stop_loss, sg.sl),
+    coalesce(sg.take_profit_1, sg.tp1),
+    coalesce(sg.take_profit_2, sg.tp2),
+    coalesce(sg.take_profit_3, sg.tp3),
+    sg.max_floating_pips,
     coalesce(sg.status, 'active'),
     sg.note,
     coalesce(sg.created_at, now()),
@@ -215,12 +256,15 @@ begin
   on conflict (id) do update set
     brand_id = excluded.brand_id,
     pair = excluded.pair,
+    mode = excluded.mode,
     action = excluded.action,
     entry = excluded.entry,
+    live_price = excluded.live_price,
     stop_loss = excluded.stop_loss,
     take_profit_1 = excluded.take_profit_1,
     take_profit_2 = excluded.take_profit_2,
     take_profit_3 = excluded.take_profit_3,
+    max_floating_pips = excluded.max_floating_pips,
     status = excluded.status,
     note = excluded.note,
     updated_at = now();
@@ -231,9 +275,12 @@ begin
     brand_id,
     signal_id,
     pair,
+    mode,
     action,
     outcome,
     points,
+    net_pips,
+    peak_pips,
     price,
     created_at
   )
@@ -252,9 +299,12 @@ begin
       else null
     end as signal_id,
     coalesce(p.pair, 'XAUUSD'),
-    p.action,
+    coalesce(nullif(p.mode, ''), 'scalping'),
+    coalesce(nullif(p.action, ''), nullif(p.type, ''), 'buy'),
     p.outcome,
-    p.points,
+    coalesce(p.points, p.net_pips),
+    coalesce(p.net_pips, p.points),
+    coalesce(p.peak_pips, p.net_pips, p.points),
     p.price,
     coalesce(p.created_at, now())
   from hq_migration.stage_performance_logs p
@@ -263,9 +313,12 @@ begin
     brand_id = excluded.brand_id,
     signal_id = excluded.signal_id,
     pair = excluded.pair,
+    mode = excluded.mode,
     action = excluded.action,
     outcome = excluded.outcome,
     points = excluded.points,
+    net_pips = excluded.net_pips,
+    peak_pips = excluded.peak_pips,
     price = excluded.price,
     created_at = excluded.created_at;
   get diagnostics v_performance_logs = row_count;
@@ -293,7 +346,10 @@ select
   (select count(*) from public.subscribers s where s.brand_id = b.brand_id and s.status = 'expired') as expired_users,
   (select count(*) from public.access_keys k where k.brand_id = b.brand_id) as keys_issued,
   (select count(*) from public.signals sg where sg.brand_id = b.brand_id and sg.created_at >= date_trunc('day', now() at time zone 'utc')) as signals_today_utc,
-  (select count(*) from public.performance_logs p where p.brand_id = b.brand_id) as performance_logs
+  (select count(*) from public.performance_logs p where p.brand_id = b.brand_id) as performance_logs,
+  (select count(*) from public.signals sg where sg.brand_id = b.brand_id) as signals_total,
+  (select max(sg.created_at) from public.signals sg where sg.brand_id = b.brand_id) as latest_signal_at,
+  (select max(p.created_at) from public.performance_logs p where p.brand_id = b.brand_id) as latest_performance_at
 from base b
 order by b.brand_id;
 

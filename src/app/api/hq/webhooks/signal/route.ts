@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   dispatchQueuedJobs,
   findIngressByEventKey,
+  getHqSupabaseServiceClient,
   getWebhookFlags,
   getWebhookRuntimeMeta,
   planDispatchJobs,
@@ -11,6 +12,7 @@ import {
   sanitizeInboundPayload,
   verifyWebhookSignature,
 } from "@/lib/hqWebhookRuntime";
+import { fanoutSignalToBrandsDb } from "@/lib/hqSignalDbFanout";
 
 function readBooleanEnv(key: string, fallback: boolean) {
   const value = process.env[key];
@@ -75,16 +77,63 @@ export async function POST(request: Request) {
     payload: safePayload,
     signatureValid: signature.valid,
   });
+  const targetBrands = resolveTargetBrands(safePayload);
+
+  const dbFanoutEnabled = readBooleanEnv("HQ_WEBHOOK_DB_FANOUT_ENABLED", true);
+  const allowHttpFanoutWithDb = readBooleanEnv("HQ_WEBHOOK_ALLOW_HTTP_FANOUT_WITH_DB", false);
+  let dbFanoutResult: Awaited<ReturnType<typeof fanoutSignalToBrandsDb>> | null = null;
+
+  if (!flags.shadowMode && dbFanoutEnabled) {
+    const supabase = getHqSupabaseServiceClient();
+    if (!supabase) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "HQ Supabase service client is not configured for DB fanout mode.",
+          flags,
+          runtime: getWebhookRuntimeMeta(),
+        },
+        { status: 503 },
+      );
+    }
+
+    dbFanoutResult = await fanoutSignalToBrandsDb({
+      supabase,
+      payload: safePayload,
+      targetBrands,
+      ingressId: ingress.id,
+    });
+
+    if (!dbFanoutResult.ok && dbFanoutResult.status && dbFanoutResult.status >= 400 && dbFanoutResult.status !== 207) {
+      return NextResponse.json(
+        {
+          ok: false,
+          duplicate: false,
+          error: dbFanoutResult.error ?? "HQ DB fanout failed.",
+          dbFanout: dbFanoutResult,
+          event: {
+            id: ingress.id,
+            eventKey: ingress.eventKey,
+            status: "failed",
+            receivedAt: ingress.receivedAt,
+          },
+          flags,
+          runtime: getWebhookRuntimeMeta(),
+        },
+        { status: dbFanoutResult.status },
+      );
+    }
+  }
 
   let plannedJobs = 0;
   let eagerDispatchResult: Awaited<ReturnType<typeof dispatchQueuedJobs>> | null = null;
-  if (!flags.shadowMode && flags.fanoutEnabled) {
-    const targets = resolveTargetBrands(safePayload);
+  const shouldRunHttpFanout = !flags.shadowMode && flags.fanoutEnabled && (!dbFanoutEnabled || allowHttpFanoutWithDb);
+  if (shouldRunHttpFanout) {
     plannedJobs = (
       await planDispatchJobs({
         ingressId: ingress.id,
         payload: safePayload,
-        targetBrands: targets,
+        targetBrands,
       })
     ).length;
 
@@ -95,15 +144,27 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    ok: true,
+    ok: dbFanoutResult ? dbFanoutResult.ok : true,
     duplicate: false,
-    mode: flags.shadowMode ? "shadow" : flags.fanoutEnabled ? "fanout" : "store_only",
+    mode: flags.shadowMode
+      ? "shadow"
+      : dbFanoutEnabled && !allowHttpFanoutWithDb
+        ? "db_fanout"
+        : flags.fanoutEnabled
+          ? "fanout"
+          : "store_only",
     event: {
       id: ingress.id,
       eventKey: ingress.eventKey,
-      status: ingress.status,
+      status: dbFanoutResult
+        ? dbFanoutResult.ok
+          ? "processed"
+          : "failed"
+        : ingress.status,
       receivedAt: ingress.receivedAt,
     },
+    targetBrands,
+    dbFanout: dbFanoutResult,
     plannedJobs,
     eagerDispatch: eagerDispatchResult,
     signature,

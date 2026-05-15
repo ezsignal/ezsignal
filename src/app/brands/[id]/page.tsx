@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { brands, getBrand, parityBoard } from "@/lib/registry";
 import { getHqOverviewSnapshot } from "@/lib/hqOverview";
+import TelegramSettingsCard from "./telegram-settings-card";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -158,6 +159,10 @@ export default async function BrandPage({
               ))}
             </div>
           </div>
+        </section>
+
+        <section className="mt-4">
+          <TelegramSettingsCard brandId={brand.id} />
         </section>
       </div>
     </main>

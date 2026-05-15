@@ -7,7 +7,9 @@
     "build": "next build",
     "check": "node --max-old-space-size=4096 ./node_modules/typescript/bin/tsc --noEmit && eslint",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "ops:live-health": "powershell -ExecutionPolicy Bypass -File ./scripts/hq-live-health-check.ps1",
+    "ops:live-health:status-only": "powershell -ExecutionPolicy Bypass -File ./scripts/hq-live-health-check.ps1 -SkipReplay"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",

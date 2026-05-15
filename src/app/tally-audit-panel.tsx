@@ -9,7 +9,10 @@ type AuditBrandMetrics = {
   expiredUsers: number;
   keysIssued: number;
   signalsToday: number;
+  signalsTotal: number;
   performanceLogs: number;
+  latestSignalAt: string | null;
+  latestPerformanceAt: string | null;
 };
 
 type AuditResponse = {
@@ -142,7 +145,10 @@ export default function TallyAuditPanel() {
                   <th>Expired</th>
                   <th>Keys</th>
                   <th>Signals Today</th>
+                  <th>Signals Total</th>
                   <th>Performance Logs</th>
+                  <th>Latest Signal</th>
+                  <th>Latest Performance</th>
                 </tr>
               </thead>
               <tbody>
@@ -153,7 +159,12 @@ export default function TallyAuditPanel() {
                     <td>{row.metrics?.expiredUsers ?? "-"}</td>
                     <td>{row.metrics?.keysIssued ?? "-"}</td>
                     <td>{row.metrics?.signalsToday ?? "-"}</td>
+                    <td>{row.metrics?.signalsTotal ?? "-"}</td>
                     <td>{row.metrics?.performanceLogs ?? "-"}</td>
+                    <td className="text-xs font-bold text-slate-500">{row.metrics?.latestSignalAt ? formatSync(row.metrics.latestSignalAt) : "-"}</td>
+                    <td className="text-xs font-bold text-slate-500">
+                      {row.metrics?.latestPerformanceAt ? formatSync(row.metrics.latestPerformanceAt) : "-"}
+                    </td>
                   </tr>
                 ))}
                 <tr>
@@ -162,7 +173,10 @@ export default function TallyAuditPanel() {
                   <td className="font-black text-slate-900">{payload.totals.expiredUsers}</td>
                   <td className="font-black text-slate-900">{payload.totals.keysIssued}</td>
                   <td className="font-black text-slate-900">{payload.totals.signalsToday}</td>
+                  <td className="font-black text-slate-900">{payload.totals.signalsTotal}</td>
                   <td className="font-black text-slate-900">{payload.totals.performanceLogs}</td>
+                  <td>-</td>
+                  <td>-</td>
                 </tr>
                 <tr>
                   <td className="font-black text-slate-900">Global Total</td>
@@ -170,7 +184,10 @@ export default function TallyAuditPanel() {
                   <td>{payload.global.expiredUsers}</td>
                   <td>{payload.global.keysIssued}</td>
                   <td>{payload.global.signalsToday}</td>
+                  <td>{payload.global.signalsTotal}</td>
                   <td>{payload.global.performanceLogs}</td>
+                  <td>-</td>
+                  <td>-</td>
                 </tr>
                 <tr>
                   <td className="font-black text-slate-900">Gap</td>
@@ -178,7 +195,10 @@ export default function TallyAuditPanel() {
                   <td className={toneByGap(payload.gaps.expiredUsers)}>{payload.gaps.expiredUsers}</td>
                   <td className={toneByGap(payload.gaps.keysIssued)}>{payload.gaps.keysIssued}</td>
                   <td className={toneByGap(payload.gaps.signalsToday)}>{payload.gaps.signalsToday}</td>
+                  <td className={toneByGap(payload.gaps.signalsTotal)}>{payload.gaps.signalsTotal}</td>
                   <td className={toneByGap(payload.gaps.performanceLogs)}>{payload.gaps.performanceLogs}</td>
+                  <td>-</td>
+                  <td>-</td>
                 </tr>
               </tbody>
             </table>

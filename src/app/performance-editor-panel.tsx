@@ -3,6 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, RefreshCw, Save, Search, Trash2, Upload } from "lucide-react";
 import { brands } from "@/lib/registry";
+import {
+  formatTradingDayBoundaryLabel,
+  getTradingDayRangeIso,
+  getTradingWeekStartIso,
+  normalizeTradingDayBoundary,
+  type TradingDayBoundary,
+} from "@/lib/hqTradingDay";
 
 type PerformanceRow = {
   id: string;
@@ -42,6 +49,17 @@ type AuditResponse = {
   ok: boolean;
   rows: AuditRow[];
   count?: number;
+  error?: string;
+};
+
+type TradingDaySettingsResponse = {
+  ok: boolean;
+  settings?: {
+    startHourMy: number;
+    startMinuteMy: number;
+    label: string;
+    source: "database" | "env" | "default";
+  };
   error?: string;
 };
 
@@ -125,6 +143,7 @@ export default function PerformanceEditorPanel() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editorEnabled, setEditorEnabled] = useState(false);
+  const [tradingDayBoundary, setTradingDayBoundary] = useState<TradingDayBoundary>(() => normalizeTradingDayBoundary());
   const csvInputRef = useRef<HTMLInputElement | null>(null);
   const unifiedAllBrands = brandFilter === "all";
 
@@ -132,17 +151,10 @@ export default function PerformanceEditorPanel() {
     const now = new Date();
     if (rangePreset === "all") return "";
     if (rangePreset === "day") {
-      const start = new Date(now);
-      start.setHours(0, 0, 0, 0);
-      return start.toISOString();
+      return getTradingDayRangeIso(tradingDayBoundary, now.getTime()).startIso;
     }
     if (rangePreset === "week") {
-      const start = new Date(now);
-      const jsDay = start.getDay();
-      const daysFromMonday = (jsDay + 6) % 7;
-      start.setDate(start.getDate() - daysFromMonday);
-      start.setHours(0, 0, 0, 0);
-      return start.toISOString();
+      return getTradingWeekStartIso(tradingDayBoundary, now.getTime());
     }
     if (rangePreset === "month") {
       const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -151,14 +163,40 @@ export default function PerformanceEditorPanel() {
     if (!fromDate) return "";
     const start = new Date(`${fromDate}T00:00:00`);
     return Number.isNaN(start.getTime()) ? "" : start.toISOString();
-  }, [fromDate, rangePreset]);
+  }, [fromDate, rangePreset, tradingDayBoundary]);
 
   const rangeEndIso = useMemo(() => {
+    if (rangePreset === "day") {
+      return getTradingDayRangeIso(tradingDayBoundary).endIso;
+    }
     if (rangePreset !== "custom") return "";
     if (!toDate) return "";
     const end = new Date(`${toDate}T23:59:59`);
     return Number.isNaN(end.getTime()) ? "" : end.toISOString();
-  }, [toDate, rangePreset]);
+  }, [toDate, rangePreset, tradingDayBoundary]);
+
+  useEffect(() => {
+    let alive = true;
+    const loadTradingDayBoundary = async () => {
+      try {
+        const response = await fetch("/api/hq/trading-day", { cache: "no-store" });
+        const json = (await response.json()) as TradingDaySettingsResponse;
+        if (!alive || !response.ok || !json.ok || !json.settings) return;
+        setTradingDayBoundary(
+          normalizeTradingDayBoundary({
+            startHourMy: json.settings.startHourMy,
+            startMinuteMy: json.settings.startMinuteMy,
+          }),
+        );
+      } catch {
+        // keep default boundary when settings endpoint is temporarily unavailable
+      }
+    };
+    void loadTradingDayBoundary();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const ensureDraft = useCallback((row: PerformanceRow) => {
     setDrafts((prev) => {
@@ -676,6 +714,10 @@ export default function PerformanceEditorPanel() {
           />
         </label>
       </div>
+
+      <p className="mb-3 text-[11px] font-bold text-slate-500">
+        Today range uses trading-day boundary: {formatTradingDayBoundaryLabel(tradingDayBoundary)}
+      </p>
 
       {rangePreset === "custom" ? (
         <div className="mb-3 grid gap-2 sm:grid-cols-2">

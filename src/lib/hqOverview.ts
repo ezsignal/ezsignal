@@ -1,6 +1,8 @@
 import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { brands, type BrandId } from "@/lib/registry";
+import { getTradingDayRangeIso } from "@/lib/hqTradingDay";
+import { getHqTradingDaySettings } from "@/lib/hqTradingDaySettings";
 
 type BrandLiveMetrics = {
   activeUsers: number;
@@ -13,6 +15,7 @@ export type HqTopAgent = {
   name: string;
   totalUsers: number;
   activeUsers: number;
+  brands: string[];
 };
 
 export type HqPackageMix = {
@@ -65,6 +68,19 @@ function normalizePackageName(raw: unknown) {
   return text.toUpperCase();
 }
 
+function normalizeAgentName(raw: unknown) {
+  const text = typeof raw === "string" ? raw.trim() : "";
+  if (!text) return "Direct";
+  const lowered = text.toLowerCase();
+  if (lowered === "null" || lowered === "n/a" || lowered === "-") return "Direct";
+  return text;
+}
+
+function labelForBrandId(brandId: string) {
+  const found = brands.find((brand) => brand.id === brandId);
+  return found ? found.displayName : brandId.toUpperCase();
+}
+
 function resolveSupabaseConfig() {
   const url = process.env.HQ_SUPABASE_URL?.trim() || process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || "";
   const serviceRoleKey = process.env.HQ_SUPABASE_SERVICE_ROLE_KEY?.trim() || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
@@ -106,28 +122,6 @@ async function countRows(
   return count ?? 0;
 }
 
-function getMalaysiaDayRangeIso() {
-  const offsetMs = 8 * 60 * 60 * 1000;
-  const nowUtcMs = Date.now();
-  const nowMyMs = nowUtcMs + offsetMs;
-  const nowMy = new Date(nowMyMs);
-  const startMyUtcMs = Date.UTC(
-    nowMy.getUTCFullYear(),
-    nowMy.getUTCMonth(),
-    nowMy.getUTCDate(),
-    0,
-    0,
-    0,
-    0,
-  );
-  const startUtcMs = startMyUtcMs - offsetMs;
-  const endUtcMs = startUtcMs + 24 * 60 * 60 * 1000 - 1;
-  return {
-    startIso: new Date(startUtcMs).toISOString(),
-    endIso: new Date(endUtcMs).toISOString(),
-  };
-}
-
 async function loadBrandMetrics(
   supabase: SupabaseClient,
   brandId: BrandId,
@@ -161,7 +155,8 @@ export async function getHqOverviewSnapshot(): Promise<HqOverviewSnapshot | null
   const supabase = getSupabaseClient();
   if (!supabase) return null;
 
-  const { startIso: todayStartIso, endIso: todayEndIso } = getMalaysiaDayRangeIso();
+  const boundary = await getHqTradingDaySettings(supabase);
+  const { startIso: todayStartIso, endIso: todayEndIso } = getTradingDayRangeIso(boundary);
 
   try {
     const metricsEntries = await Promise.all(
@@ -197,7 +192,7 @@ export async function getHqOverviewSnapshot(): Promise<HqOverviewSnapshot | null
       ]),
       supabase
         .from(SUBSCRIBER_TABLE)
-        .select("package_name,introducer,status")
+        .select("brand_id,package_name,introducer,status")
         .in("brand_id", brands.map((brand) => brand.id)),
     ]);
 
@@ -206,23 +201,24 @@ export async function getHqOverviewSnapshot(): Promise<HqOverviewSnapshot | null
     }
 
     const packageMap = new Map<string, { totalUsers: number; activeUsers: number }>();
-    const agentMap = new Map<string, { totalUsers: number; activeUsers: number }>();
+    const agentMap = new Map<string, { totalUsers: number; activeUsers: number; brands: Set<string> }>();
     let activePackageTypes = 0;
 
     for (const row of subscribersLite.data ?? []) {
       const packageName = normalizePackageName(row.package_name);
-      const agentRaw = typeof row.introducer === "string" ? row.introducer.trim() : "";
-      const agentName = agentRaw.length > 0 ? agentRaw : "Direct";
+      const agentName = normalizeAgentName(row.introducer);
       const isActive = String(row.status ?? "").toLowerCase() === "active";
+      const brandLabel = labelForBrandId(typeof row.brand_id === "string" ? row.brand_id : "");
 
       const packageEntry = packageMap.get(packageName) ?? { totalUsers: 0, activeUsers: 0 };
       packageEntry.totalUsers += 1;
       if (isActive) packageEntry.activeUsers += 1;
       packageMap.set(packageName, packageEntry);
 
-      const agentEntry = agentMap.get(agentName) ?? { totalUsers: 0, activeUsers: 0 };
+      const agentEntry = agentMap.get(agentName) ?? { totalUsers: 0, activeUsers: 0, brands: new Set<string>() };
       agentEntry.totalUsers += 1;
       if (isActive) agentEntry.activeUsers += 1;
+      if (brandLabel) agentEntry.brands.add(brandLabel);
       agentMap.set(agentName, agentEntry);
     }
 
@@ -233,6 +229,7 @@ export async function getHqOverviewSnapshot(): Promise<HqOverviewSnapshot | null
         name,
         totalUsers: values.totalUsers,
         activeUsers: values.activeUsers,
+        brands: Array.from(values.brands).sort((a, b) => a.localeCompare(b)),
       }))
       .sort((a, b) => (b.activeUsers - a.activeUsers) || (b.totalUsers - a.totalUsers) || a.name.localeCompare(b.name))
       .slice(0, 5);

@@ -2,6 +2,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { brands, type BrandId } from "@/lib/registry";
 import { getHqSupabaseServiceClient, getWebhookRuntimeMeta } from "@/lib/hqWebhookRuntime";
+import { getTradingDayRangeIso } from "@/lib/hqTradingDay";
+import { getHqTradingDaySettings } from "@/lib/hqTradingDaySettings";
 
 type FilterValue = string | number | boolean;
 type FilterDefinition =
@@ -14,7 +16,10 @@ type BrandTallies = {
   expiredUsers: number;
   keysIssued: number;
   signalsToday: number;
+  signalsTotal: number;
   performanceLogs: number;
+  latestSignalAt: string | null;
+  latestPerformanceAt: string | null;
 };
 
 type Totals = {
@@ -22,6 +27,7 @@ type Totals = {
   expiredUsers: number;
   keysIssued: number;
   signalsToday: number;
+  signalsTotal: number;
   performanceLogs: number;
 };
 
@@ -49,6 +55,7 @@ export type HqTallyAudit = {
     expiredUsers: number;
     keysIssued: number;
     signalsToday: number;
+    signalsTotal: number;
     performanceLogs: number;
   };
   healthy: boolean;
@@ -59,12 +66,6 @@ const SUBSCRIBER_TABLE = "subscribers";
 const ACCESS_KEY_TABLE = "access_keys";
 const SIGNAL_TABLE = "signals";
 const PERFORMANCE_LOG_TABLE = "performance_logs";
-
-function utcDayStartIso() {
-  const now = new Date();
-  now.setUTCHours(0, 0, 0, 0);
-  return now.toISOString();
-}
 
 async function countRows(
   supabase: SupabaseClient,
@@ -92,6 +93,37 @@ async function countRows(
   return count ?? 0;
 }
 
+async function latestCreatedAt(
+  supabase: SupabaseClient,
+  table: string,
+  filters: FilterDefinition[] = [],
+) {
+  let query = supabase
+    .from(table)
+    .select("created_at")
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  for (const filter of filters) {
+    if (filter.op === "eq") {
+      query = query.eq(filter.column, filter.value);
+      continue;
+    }
+    if (filter.op === "gte") {
+      query = query.gte(filter.column, filter.value);
+      continue;
+    }
+    query = query.in(filter.column, filter.values);
+  }
+
+  const { data, error } = await query.maybeSingle();
+  if (error) {
+    throw new Error(`[HQ tally] Latest query failed for ${table}: ${error.message}`);
+  }
+
+  return data?.created_at ? String(data.created_at) : null;
+}
+
 async function getCoverageForTable(
   supabase: SupabaseClient,
   table: TableCoverage["table"],
@@ -115,7 +147,7 @@ async function getBrandTallies(
   brandId: BrandId,
   todayStart: string,
 ): Promise<BrandTallies> {
-  const [activeUsers, expiredUsers, keysIssued, signalsToday, performanceLogs] =
+  const [activeUsers, expiredUsers, keysIssued, signalsToday, signalsTotal, performanceLogs, latestSignalAt, latestPerformanceAt] =
     await Promise.all([
       countRows(supabase, SUBSCRIBER_TABLE, [
         { op: "eq", column: "brand_id", value: brandId },
@@ -132,7 +164,16 @@ async function getBrandTallies(
         { op: "eq", column: "brand_id", value: brandId },
         { op: "gte", column: "created_at", value: todayStart },
       ]),
+      countRows(supabase, SIGNAL_TABLE, [
+        { op: "eq", column: "brand_id", value: brandId },
+      ]),
       countRows(supabase, PERFORMANCE_LOG_TABLE, [
+        { op: "eq", column: "brand_id", value: brandId },
+      ]),
+      latestCreatedAt(supabase, SIGNAL_TABLE, [
+        { op: "eq", column: "brand_id", value: brandId },
+      ]),
+      latestCreatedAt(supabase, PERFORMANCE_LOG_TABLE, [
         { op: "eq", column: "brand_id", value: brandId },
       ]),
     ]);
@@ -142,7 +183,10 @@ async function getBrandTallies(
     expiredUsers,
     keysIssued,
     signalsToday,
+    signalsTotal,
     performanceLogs,
+    latestSignalAt,
+    latestPerformanceAt,
   };
 }
 
@@ -151,7 +195,8 @@ export async function getHqTallyAudit(): Promise<HqTallyAudit | null> {
   if (!supabase) return null;
 
   const knownBrandIds = brands.map((brand) => brand.id);
-  const todayStart = utcDayStartIso();
+  const tradingDayBoundary = await getHqTradingDaySettings(supabase);
+  const todayStart = getTradingDayRangeIso(tradingDayBoundary).startIso;
 
   try {
     const brandEntries = await Promise.all(
@@ -172,6 +217,7 @@ export async function getHqTallyAudit(): Promise<HqTallyAudit | null> {
         acc.expiredUsers += tally.expiredUsers;
         acc.keysIssued += tally.keysIssued;
         acc.signalsToday += tally.signalsToday;
+        acc.signalsTotal += tally.signalsTotal;
         acc.performanceLogs += tally.performanceLogs;
         return acc;
       },
@@ -180,11 +226,12 @@ export async function getHqTallyAudit(): Promise<HqTallyAudit | null> {
         expiredUsers: 0,
         keysIssued: 0,
         signalsToday: 0,
+        signalsTotal: 0,
         performanceLogs: 0,
       },
     );
 
-    const [globalActiveUsers, globalExpiredUsers, globalKeysIssued, globalSignalsToday, globalPerformanceLogs, coverage] = await Promise.all([
+    const [globalActiveUsers, globalExpiredUsers, globalKeysIssued, globalSignalsToday, globalSignalsTotal, globalPerformanceLogs, coverage] = await Promise.all([
       countRows(supabase, SUBSCRIBER_TABLE, [
         { op: "eq", column: "status", value: "active" },
       ]),
@@ -195,6 +242,7 @@ export async function getHqTallyAudit(): Promise<HqTallyAudit | null> {
       countRows(supabase, SIGNAL_TABLE, [
         { op: "gte", column: "created_at", value: todayStart },
       ]),
+      countRows(supabase, SIGNAL_TABLE),
       countRows(supabase, PERFORMANCE_LOG_TABLE),
       Promise.all([
         getCoverageForTable(supabase, SUBSCRIBER_TABLE, knownBrandIds),
@@ -209,6 +257,7 @@ export async function getHqTallyAudit(): Promise<HqTallyAudit | null> {
       expiredUsers: globalExpiredUsers,
       keysIssued: globalKeysIssued,
       signalsToday: globalSignalsToday,
+      signalsTotal: globalSignalsTotal,
       performanceLogs: globalPerformanceLogs,
     };
 
@@ -217,6 +266,7 @@ export async function getHqTallyAudit(): Promise<HqTallyAudit | null> {
       expiredUsers: global.expiredUsers - totals.expiredUsers,
       keysIssued: global.keysIssued - totals.keysIssued,
       signalsToday: global.signalsToday - totals.signalsToday,
+      signalsTotal: global.signalsTotal - totals.signalsTotal,
       performanceLogs: global.performanceLogs - totals.performanceLogs,
     };
 
@@ -232,6 +282,9 @@ export async function getHqTallyAudit(): Promise<HqTallyAudit | null> {
     }
     if (gaps.signalsToday !== 0) {
       issues.push(`Signals today mismatch: global=${global.signalsToday}, brand-sum=${totals.signalsToday}`);
+    }
+    if (gaps.signalsTotal !== 0) {
+      issues.push(`Signals total mismatch: global=${global.signalsTotal}, brand-sum=${totals.signalsTotal}`);
     }
     if (gaps.performanceLogs !== 0) {
       issues.push(`Performance logs mismatch: global=${global.performanceLogs}, brand-sum=${totals.performanceLogs}`);

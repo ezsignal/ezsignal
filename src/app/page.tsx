@@ -3,6 +3,7 @@ import { ArrowRight, Box, Building2, CircleDashed, CircleAlert, KeyRound, RadioT
 import HqShell from "@/app/hq-shell";
 import TallyAuditPanel from "@/app/tally-audit-panel";
 import { MetricCard } from "@/app/hq-ui";
+import TradingDaySettingsCard from "@/app/trading-day-settings-card";
 import { migrationProgress, nextTasks, totals } from "@/lib/registry";
 import { getHqOverviewSnapshot } from "@/lib/hqOverview";
 
@@ -75,6 +76,9 @@ export default async function Home() {
                 <p className="mt-1 text-xs font-bold text-slate-600">
                   Active {row.activeUsers} / Total {row.totalUsers}
                 </p>
+                <p className="mt-1 text-[11px] font-bold text-slate-500">
+                  Brand: {row.brands.length ? row.brands.join(", ") : "-"}
+                </p>
               </div>
             )) : (
               <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 text-xs font-bold text-slate-500">
@@ -113,6 +117,19 @@ export default async function Home() {
               </tbody>
             </table>
           </div>
+        </div>
+      </section>
+
+      <section className="mb-6 grid gap-3 lg:grid-cols-[380px_1fr]">
+        <TradingDaySettingsCard />
+        <div className="panel p-4">
+          <h2 className="text-lg font-black text-slate-950">Trading Day Logic</h2>
+          <p className="mt-1 text-xs font-bold text-slate-500">
+            SIGNALS TODAY, New Users Today, and Expiring Today in HQ follow the boundary time set on the left.
+          </p>
+          <p className="mt-3 text-sm font-semibold leading-6 text-slate-700">
+            Use this when broker server time shifts between winter and summer. After updating the boundary, refresh the overview to see the latest totals.
+          </p>
         </div>
       </section>
 

@@ -181,10 +181,13 @@ function normalizePerformanceRow(row: Record<string, unknown>, note: string | nu
   };
 }
 
-function toMinuteBucket(value: string) {
+function toModeBucket(value: string, mode: "scalping" | "intraday") {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value.slice(0, 16);
-  return d.toISOString().slice(0, 16);
+  const ms = d.getTime();
+  const intervalMs = mode === "intraday" ? 4 * 60 * 60 * 1000 : 30 * 60 * 1000;
+  const bucketStartMs = Math.floor(ms / intervalMs) * intervalMs;
+  return new Date(bucketStartMs).toISOString();
 }
 
 function dedupePerformanceRows(rows: PerformanceRow[], consolidatedAllBrands = false) {
@@ -194,10 +197,9 @@ function dedupePerformanceRows(rows: PerformanceRow[], consolidatedAllBrands = f
   for (const row of rows) {
     const keyParts = [
       row.pair,
-      toMinuteBucket(row.created_at),
       row.mode,
       row.type,
-      row.outcome,
+      toModeBucket(row.created_at, row.mode),
     ];
     if (!consolidatedAllBrands) keyParts.unshift(row.brand_id);
     const key = keyParts.join("|");
@@ -358,8 +360,6 @@ async function resolvePropagationClusterRows(
     const sourcePair = typeof row.pair === "string" && row.pair.trim().length > 0 ? row.pair : "XAUUSD";
     const sourceMode = row.mode === "intraday" ? "intraday" : "scalping";
     const sourceType = row.action === "sell" ? "sell" : "buy";
-    const sourceOutcome = typeof row.outcome === "string" ? row.outcome : null;
-    if (!sourceOutcome) continue;
 
     const bounds = getBucketBoundsIso(String(row.created_at), sourceMode);
     if (!bounds) continue;
@@ -370,7 +370,6 @@ async function resolvePropagationClusterRows(
       .eq("pair", sourcePair)
       .eq("mode", sourceMode)
       .eq("action", sourceType)
-      .eq("outcome", sourceOutcome)
       .gte("created_at", bounds.fromIso)
       .lt("created_at", bounds.toIso)
       .limit(5000);

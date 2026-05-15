@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { dispatchQueuedJobs, getWebhookFlags, getWebhookRuntimeMeta } from "@/lib/hqWebhookRuntime";
+import { isHqAdminAuthorized } from "@/lib/hqAdminAuth";
 
 function resolveRunTokenCandidates() {
   return [process.env.HQ_DISPATCH_RUN_TOKEN?.trim(), process.env.CRON_SECRET?.trim()].filter(
@@ -8,6 +9,7 @@ function resolveRunTokenCandidates() {
 }
 
 function isAuthorizedDispatchRequest(request: Request) {
+  if (isHqAdminAuthorized(request)) return true;
   const tokens = resolveRunTokenCandidates();
   if (tokens.length === 0) {
     return process.env.NODE_ENV !== "production";
