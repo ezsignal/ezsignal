@@ -160,7 +160,7 @@ export default function TelegramSettingsCard({ brandId }: { brandId: string }) {
         <input
           value={chatId}
           onChange={(event) => setChatId(event.target.value)}
-          placeholder="Chat ID"
+          placeholder="Chat ID(s) (comma or new line)"
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
           autoComplete="off"
         />
@@ -192,6 +192,9 @@ export default function TelegramSettingsCard({ brandId }: { brandId: string }) {
         >
           Get Telegram chat ID (UserInfoToBot)
         </a>
+        <p className="text-[11px] font-semibold text-slate-500">
+          Multi chat ID supported. Example: <span className="font-mono">6079822515,-1001234567890</span>
+        </p>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">

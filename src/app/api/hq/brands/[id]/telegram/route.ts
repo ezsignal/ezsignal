@@ -23,6 +23,18 @@ function asObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function parseChatIds(value: string | null | undefined) {
+  if (!value) return [] as string[];
+  return value
+    .split(/[\n,;]+/g)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function serializeChatIds(chatIds: string[]) {
+  return chatIds.join(",");
+}
+
 function buildTelegramMessage(brandId: BrandId) {
   const now = new Date().toLocaleString("en-GB", { timeZone: "Asia/Kuala_Lumpur", hour12: false });
   return [
@@ -83,15 +95,16 @@ export async function GET(_request: Request, { params }: Params) {
 
   const token = typeof data?.bot_token_secret_ref === "string" ? data.bot_token_secret_ref : null;
   const chatId = typeof data?.channel_id === "string" ? data.channel_id : "";
+  const chatIds = parseChatIds(chatId);
   const enabled = data?.is_active !== false;
 
   return NextResponse.json({
     ok: true,
     brandId,
     telegram: {
-      configured: Boolean(token && chatId),
+      configured: Boolean(token && chatIds.length > 0),
       enabled,
-      chatId,
+      chatId: chatIds.join(", "),
       tokenMasked: maskTokenTail(token),
       hasToken: Boolean(token),
       updatedAt: data?.updated_at ?? null,
@@ -138,37 +151,49 @@ export async function POST(request: Request, { params }: Params) {
 
   const existingToken = typeof existing?.bot_token_secret_ref === "string" ? existing.bot_token_secret_ref.trim() : "";
   const existingChatId = typeof existing?.channel_id === "string" ? existing.channel_id.trim() : "";
+  const existingChatIds = parseChatIds(existingChatId);
   const existingEnabled = existing?.is_active !== false;
 
   if (action === "test") {
     const inputToken = typeof payload.botToken === "string" ? payload.botToken.trim() : "";
     const inputChatId = typeof payload.chatId === "string" ? payload.chatId.trim() : "";
+    const inputChatIds = parseChatIds(inputChatId);
     const testToken = inputToken || existingToken;
-    const testChatId = inputChatId || existingChatId;
-    if (!testToken || !testChatId) {
+    const testChatIds = inputChatIds.length > 0 ? inputChatIds : existingChatIds;
+    if (!testToken || testChatIds.length === 0) {
       return NextResponse.json(
         { ok: false, error: "Missing bot token or chat id for test." },
         { status: 400 },
       );
     }
 
-    try {
-      await sendTelegramMessage(testToken, testChatId, buildTelegramMessage(brandId));
-      return NextResponse.json({ ok: true, tested: true });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to send Telegram test message.";
-      return NextResponse.json({ ok: false, error: message }, { status: 502 });
+    const failures: string[] = [];
+    for (const chatId of testChatIds) {
+      try {
+        await sendTelegramMessage(testToken, chatId, buildTelegramMessage(brandId));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to send Telegram test message.";
+        failures.push(`${chatId}: ${message}`);
+      }
     }
+
+    if (failures.length > 0) {
+      return NextResponse.json({ ok: false, error: `Telegram test failed for ${failures.join(" | ")}` }, { status: 502 });
+    }
+
+    return NextResponse.json({ ok: true, tested: true, sentTo: testChatIds.length });
   }
 
   const inputToken = typeof payload.botToken === "string" ? payload.botToken.trim() : "";
   const inputChatId = typeof payload.chatId === "string" ? payload.chatId.trim() : "";
+  const inputChatIds = parseChatIds(inputChatId);
   const inputEnabled = typeof payload.enabled === "boolean" ? payload.enabled : existingEnabled;
 
   const tokenToSave = inputToken || existingToken;
-  const chatIdToSave = inputChatId || existingChatId;
+  const chatIdsToSave = inputChatIds.length > 0 ? inputChatIds : existingChatIds;
+  const chatIdToSave = serializeChatIds(chatIdsToSave);
 
-  if (!tokenToSave || !chatIdToSave) {
+  if (!tokenToSave || chatIdsToSave.length === 0) {
     return NextResponse.json(
       { ok: false, error: "Bot token and chat id are required." },
       { status: 400 },
@@ -199,7 +224,7 @@ export async function POST(request: Request, { params }: Params) {
     telegram: {
       configured: true,
       enabled: inputEnabled,
-      chatId: chatIdToSave,
+      chatId: chatIdsToSave.join(", "),
       tokenMasked: maskTokenTail(tokenToSave),
       hasToken: true,
     },
