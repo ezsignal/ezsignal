@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type BrandId = "kafra" | "sarjan" | "richjoker" | "shinobi";
+export type BrandId = "kafra" | "sarjan" | "richjoker" | "shinobi" | "kapitan";
 
 export type BrandStatus = "core" | "synced" | "watch" | "draft";
 
@@ -148,6 +148,27 @@ export const brands: BrandRegistryItem[] = [
     telegramStatus: "Review",
     lastDeploy: "today",
   },
+  {
+    id: "kapitan",
+    displayName: "KAPITAN SIGNAL",
+    canonicalName: "KAPITAN SIGNAL",
+    role: "White label",
+    domain: "kapitan.ezos.my",
+    github: "kapitansignal/kapitansignal",
+    vercelProject: "kapitansignal",
+    localFolder: "KAPITAN SIGNAL",
+    supabaseGroup: "Supabase account A",
+    accent: "#f5c542",
+    status: "synced",
+    parity: 100,
+    activeUsers: 0,
+    expiredUsers: 0,
+    keysIssued: 0,
+    signalsToday: 0,
+    revenueEstimate: "USD 0",
+    telegramStatus: "Ready",
+    lastDeploy: "today",
+  },
 ];
 
 export const hqModules: HqModule[] = [
@@ -190,7 +211,7 @@ export const hqModules: HqModule[] = [
 ];
 
 export const migrationPhases: MigrationPhase[] = [
-  { id: 1, title: "Normalize all 4 schemas to KAFRA parity", status: "active", owner: "Schema" },
+  { id: 1, title: "Normalize all schemas to KAFRA parity", status: "active", owner: "Schema" },
   { id: 2, title: "Move public access/session checks to server routes", status: "done", owner: "Apps" },
   { id: 3, title: "Add brand_id columns and backfill existing data", status: "pending", owner: "Data" },
   { id: 4, title: "Create shared Supabase project and seed brands", status: "pending", owner: "Infra" },
@@ -226,11 +247,16 @@ export const parityBoard: Record<BrandId, BrandParityCheck[]> = {
     { id: "package-links", label: "Package Links flow", status: "pass", note: "Edit flow and token handling aligned" },
     { id: "admin-header", label: "Admin header flow", status: "pass", note: "Signal, refresh, logout aligned" },
   ],
+  kapitan: [
+    { id: "access-ui", label: "Access UI parity", status: "pass", note: "Access, dashboard, and landing theme aligned" },
+    { id: "package-links", label: "Package Links flow", status: "pass", note: "Create/edit/toggle link flow aligned with shared API" },
+    { id: "admin-header", label: "Admin header flow", status: "pass", note: "Signal, refresh, logout aligned" },
+  ],
 };
 
 export const systemLanes = [
-  { label: "GitHub", value: "4 repos mapped", icon: GitBranch },
-  { label: "Vercel", value: "4 projects mapped", icon: Activity },
+  { label: "GitHub", value: `${brands.length} repos mapped`, icon: GitBranch },
+  { label: "Vercel", value: `${brands.length} projects mapped`, icon: Activity },
   { label: "Supabase", value: "2 accounts now", icon: Database },
   { label: "Users", value: `${brands.reduce((sum, brand) => sum + brand.activeUsers, 0)} active`, icon: UsersRound },
   { label: "Revenue", value: "Demo estimates", icon: BadgeDollarSign },
