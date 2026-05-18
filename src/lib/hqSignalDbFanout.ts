@@ -5,6 +5,10 @@ const GOLD_PIPS_MULTIPLIER = 10;
 const SIGNAL_DUPLICATE_COOLDOWN_SECONDS = Number(process.env.SIGNAL_DUPLICATE_COOLDOWN_SECONDS ?? "90");
 const BE_REVERSAL_PIPS = Number(process.env.BE_REVERSAL_PIPS ?? "20");
 const SL_MAX_PROGRESS_PIPS = Number(process.env.SL_MAX_PROGRESS_PIPS ?? "10");
+const BRAND_PRICE_DISTANCE_MULTIPLIER: Partial<Record<BrandId, number>> = {
+  richjoker: 0.5,
+  shinobi: 0.5,
+};
 
 type WebhookEvent = "signal" | "price_update" | "signal_closed";
 type SignalMode = "scalping" | "intraday";
@@ -90,6 +94,49 @@ function asNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function getBrandPriceDistanceMultiplier(brandId: BrandId) {
+  const fallback = BRAND_PRICE_DISTANCE_MULTIPLIER[brandId] ?? 1;
+  const envKey = `HQ_BRAND_${brandId.toUpperCase()}_PRICE_DISTANCE_MULTIPLIER`;
+  const envRaw = process.env[envKey];
+  if (!envRaw || envRaw.trim().length === 0) return fallback;
+  const parsed = Number(envRaw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+}
+
+function scaleLevelFromEntry(entry: number, level: number, multiplier: number) {
+  const scaled = entry + (level - entry) * multiplier;
+  return Number(scaled.toFixed(5));
+}
+
+function scaleSignalLevelsForBrand(args: {
+  brandId: BrandId;
+  entryTarget: number;
+  sl: number;
+  tp1: number;
+  tp2: number;
+  tp3: number | null;
+}) {
+  const multiplier = getBrandPriceDistanceMultiplier(args.brandId);
+  if (Math.abs(multiplier - 1) < 0.000001) {
+    return {
+      entryTarget: args.entryTarget,
+      sl: args.sl,
+      tp1: args.tp1,
+      tp2: args.tp2,
+      tp3: args.tp3,
+    };
+  }
+
+  return {
+    entryTarget: args.entryTarget,
+    sl: scaleLevelFromEntry(args.entryTarget, args.sl, multiplier),
+    tp1: scaleLevelFromEntry(args.entryTarget, args.tp1, multiplier),
+    tp2: scaleLevelFromEntry(args.entryTarget, args.tp2, multiplier),
+    tp3: args.tp3 === null ? null : scaleLevelFromEntry(args.entryTarget, args.tp3, multiplier),
+  };
 }
 
 function inferHitOutcome(args: {
@@ -656,6 +703,15 @@ async function processSignalOpen(args: {
   tp3: number | null;
 }): Promise<BrandResult> {
   const { supabase, brandId, pair, mode, type, status, entryTarget, livePrice, sl, tp1, tp2, tp3 } = args;
+  const scaledLevels = scaleSignalLevelsForBrand({
+    brandId,
+    entryTarget,
+    sl,
+    tp1,
+    tp2,
+    tp3,
+  });
+
   const cooldownFromIso = new Date(Date.now() - Math.max(10, SIGNAL_DUPLICATE_COOLDOWN_SECONDS) * 1000).toISOString();
 
   const { data: maybeDup, error: dupError } = await supabase
@@ -699,20 +755,20 @@ async function processSignalOpen(args: {
   const immediateHit = inferHitOutcome({
     type,
     livePrice,
-    sl,
-    tp1,
-    tp2,
-    tp3,
+    sl: scaledLevels.sl,
+    tp1: scaledLevels.tp1,
+    tp2: scaledLevels.tp2,
+    tp3: scaledLevels.tp3,
   });
   const immediateOutcome = immediateHit
     ? classifyCycleOutcome({
         type,
         entryTarget,
         closePrice: livePrice,
-        sl,
-        tp1,
-        tp2,
-        tp3,
+        sl: scaledLevels.sl,
+        tp1: scaledLevels.tp1,
+        tp2: scaledLevels.tp2,
+        tp3: scaledLevels.tp3,
         peakPips: Math.max(0, (type === "buy" ? livePrice - entryTarget : entryTarget - livePrice) * GOLD_PIPS_MULTIPLIER),
       })
     : null;
@@ -727,10 +783,10 @@ async function processSignalOpen(args: {
       action: type,
       entry: entryTarget,
       live_price: livePrice,
-      stop_loss: sl,
-      take_profit_1: tp1,
-      take_profit_2: tp2,
-      take_profit_3: tp3,
+      stop_loss: scaledLevels.sl,
+      take_profit_1: scaledLevels.tp1,
+      take_profit_2: scaledLevels.tp2,
+      take_profit_3: scaledLevels.tp3,
       max_floating_pips: 0,
       status: finalStatus,
       updated_at: new Date().toISOString(),
