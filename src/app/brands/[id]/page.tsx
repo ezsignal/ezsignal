@@ -37,7 +37,7 @@ export default async function BrandPage({
     notFound();
   }
 
-  const liveSnapshot = await getHqOverviewSnapshot();
+  const liveSnapshot = await getHqOverviewSnapshot({ dispatchOpsAlerts: false });
   const liveBrand = liveSnapshot?.brands[brand.id];
 
   const healthRows = [

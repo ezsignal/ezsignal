@@ -11,7 +11,7 @@ export const revalidate = 0;
 const fallbackTotals = totals();
 
 export default async function BrandsPage() {
-  const liveSnapshot = await getHqOverviewSnapshot();
+  const liveSnapshot = await getHqOverviewSnapshot({ dispatchOpsAlerts: false });
   const total = liveSnapshot?.totals ?? fallbackTotals;
   const lanes = systemLanes.map((lane) =>
     lane.label === "Users" ? { ...lane, value: `${total.activeUsers} active` } : lane,

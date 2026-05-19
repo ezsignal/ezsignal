@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import HqNav from "@/app/hq-nav";
 import HqThemeToggle from "@/app/hq-theme-toggle";
+import HqLogoutButton from "@/app/hq-logout-button";
 import { getWebhookRuntimeMeta } from "@/lib/hqWebhookRuntime";
 
 export default async function HqShell({
@@ -34,6 +35,9 @@ export default async function HqShell({
         <HqNav />
         <div className="mt-4">
           <HqThemeToggle />
+        </div>
+        <div className="mt-2">
+          <HqLogoutButton />
         </div>
 
         <div className="mt-8 rounded-lg border border-slate-200 bg-slate-50 p-3">

@@ -459,7 +459,7 @@ async function loadBrandMetrics(
   };
 }
 
-export async function getHqOverviewSnapshot(): Promise<HqOverviewSnapshot | null> {
+export async function getHqOverviewSnapshot(options?: { dispatchOpsAlerts?: boolean }): Promise<HqOverviewSnapshot | null> {
   const supabase = getSupabaseClient();
   if (!supabase) return null;
 
@@ -468,7 +468,9 @@ export async function getHqOverviewSnapshot(): Promise<HqOverviewSnapshot | null
 
   try {
     const opsAlerts = await loadOpsAlerts(supabase);
-    await dispatchOpsAlertsToTelegram(supabase, opsAlerts);
+    if (options?.dispatchOpsAlerts) {
+      await dispatchOpsAlertsToTelegram(supabase, opsAlerts);
+    }
 
     const metricsEntries = await Promise.all(
       brands.map(async (brand) => [brand.id, await loadBrandMetrics(supabase, brand.id, todayStartIso)] as const),

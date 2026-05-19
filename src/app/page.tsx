@@ -14,7 +14,7 @@ const fallbackTotals = totals();
 const phasePercent = migrationProgress();
 
 export default async function Home() {
-  const liveSnapshot = await getHqOverviewSnapshot();
+  const liveSnapshot = await getHqOverviewSnapshot({ dispatchOpsAlerts: true });
   const total = liveSnapshot?.totals ?? fallbackTotals;
   const overview = liveSnapshot?.overview ?? {
     newUsersToday: 0,
