@@ -11,10 +11,15 @@ export function getHqAdminKeyCandidates() {
   ].filter(Boolean);
 }
 
-export function isHqAdminAuthorized(request: Request) {
+export function isValidHqAdminKey(key: string) {
   const candidates = getHqAdminKeyCandidates();
   if (candidates.length === 0) return process.env.NODE_ENV !== "production";
+  const normalized = key.trim();
+  if (!normalized) return false;
+  return candidates.includes(normalized);
+}
+
+export function isHqAdminAuthorized(request: Request) {
   const key = request.headers.get("x-admin-key")?.trim() ?? "";
-  if (!key) return false;
-  return candidates.includes(key);
+  return isValidHqAdminKey(key);
 }
