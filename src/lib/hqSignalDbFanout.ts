@@ -96,7 +96,7 @@ function asNumber(value: unknown): number | null {
   return null;
 }
 
-function getBrandPriceDistanceMultiplier(brandId: BrandId) {
+function getDefaultBrandPriceDistanceMultiplier(brandId: BrandId) {
   const fallback = BRAND_PRICE_DISTANCE_MULTIPLIER[brandId] ?? 1;
   const envKey = `HQ_BRAND_${brandId.toUpperCase()}_PRICE_DISTANCE_MULTIPLIER`;
   const envRaw = process.env[envKey];
@@ -106,20 +106,59 @@ function getBrandPriceDistanceMultiplier(brandId: BrandId) {
   return parsed;
 }
 
+function readSettingsMultiplier(settings: unknown) {
+  const bag = asObject(settings);
+  const fromSnake = asNumber(bag.signal_price_distance_multiplier);
+  const fromCamel = asNumber(bag.signalPriceDistanceMultiplier);
+  const picked = fromSnake ?? fromCamel;
+  if (picked === null) return null;
+  if (!Number.isFinite(picked) || picked <= 0) return null;
+  return picked;
+}
+
+async function loadBrandPriceDistanceMultiplierMap(
+  supabase: SupabaseClient,
+  targetBrands: BrandId[],
+) {
+  const defaults: Record<BrandId, number> = {} as Record<BrandId, number>;
+  for (const brandId of targetBrands) {
+    defaults[brandId] = getDefaultBrandPriceDistanceMultiplier(brandId);
+  }
+
+  const { data, error } = await supabase
+    .from("brand_publish_rules")
+    .select("brand_id,settings")
+    .in("brand_id", targetBrands);
+
+  if (error || !data) return defaults;
+
+  for (const row of data as Array<Record<string, unknown>>) {
+    const brandIdRaw = normalized(row.brand_id);
+    if (!brandIdRaw) continue;
+    if (!targetBrands.includes(brandIdRaw as BrandId)) continue;
+    const parsed = readSettingsMultiplier(row.settings);
+    if (parsed !== null) {
+      defaults[brandIdRaw as BrandId] = parsed;
+    }
+  }
+
+  return defaults;
+}
+
 function scaleLevelFromEntry(entry: number, level: number, multiplier: number) {
   const scaled = entry + (level - entry) * multiplier;
   return Number(scaled.toFixed(5));
 }
 
 function scaleSignalLevelsForBrand(args: {
-  brandId: BrandId;
+  priceDistanceMultiplier: number;
   entryTarget: number;
   sl: number;
   tp1: number;
   tp2: number;
   tp3: number | null;
 }) {
-  const multiplier = getBrandPriceDistanceMultiplier(args.brandId);
+  const multiplier = args.priceDistanceMultiplier;
   if (Math.abs(multiplier - 1) < 0.000001) {
     return {
       entryTarget: args.entryTarget,
@@ -691,6 +730,7 @@ async function processSignalClosed(args: {
 async function processSignalOpen(args: {
   supabase: SupabaseClient;
   brandId: BrandId;
+  priceDistanceMultiplier: number;
   pair: string;
   mode: SignalMode;
   type: SignalType;
@@ -702,9 +742,9 @@ async function processSignalOpen(args: {
   tp2: number;
   tp3: number | null;
 }): Promise<BrandResult> {
-  const { supabase, brandId, pair, mode, type, status, entryTarget, livePrice, sl, tp1, tp2, tp3 } = args;
+  const { supabase, brandId, pair, mode, type, status, entryTarget, livePrice, sl, tp1, tp2, tp3, priceDistanceMultiplier } = args;
   const scaledLevels = scaleSignalLevelsForBrand({
-    brandId,
+    priceDistanceMultiplier,
     entryTarget,
     sl,
     tp1,
@@ -881,6 +921,8 @@ export async function fanoutSignalToBrandsDb(input: {
     };
   }
 
+  const brandPriceDistanceMultiplierMap = await loadBrandPriceDistanceMultiplierMap(input.supabase, input.targetBrands);
+
   const results: BrandResult[] = [];
   for (const brandId of input.targetBrands) {
     let row: BrandResult;
@@ -905,6 +947,7 @@ export async function fanoutSignalToBrandsDb(input: {
       row = await processSignalOpen({
         supabase: input.supabase,
         brandId,
+        priceDistanceMultiplier: brandPriceDistanceMultiplierMap[brandId] ?? 1,
         pair: parsed.pair,
         mode: parsed.mode,
         type: parsed.type,

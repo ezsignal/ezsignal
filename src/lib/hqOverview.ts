@@ -42,7 +42,17 @@ export type HqOverviewSnapshot = {
   };
   topAgents: HqTopAgent[];
   packageMix: HqPackageMix[];
+  opsAlerts: HqOpsAlert[];
   brands: Record<BrandId, BrandLiveMetrics>;
+};
+
+export type HqOpsAlert = {
+  key: string;
+  brandId: BrandId | null;
+  mode: "scalping" | "intraday" | null;
+  severity: "critical" | "warning";
+  title: string;
+  message: string;
 };
 
 type FilterDefinition =
@@ -53,7 +63,31 @@ type FilterDefinition =
 const SIGNAL_TABLE = "signals";
 const SUBSCRIBER_TABLE = "subscribers";
 const ACCESS_KEY_TABLE = "access_keys";
+const TELEGRAM_BOT_TABLE = "telegram_bots";
+const OPS_ALERT_STATE_TABLE = "hq_ops_alert_state";
 const HQ_MASTER_BRAND_ID: BrandId = "kafra";
+const TELEGRAM_REGISTRATION_BOT_NAME = "registration_alert";
+const OPS_ALERT_COOLDOWN_MINUTES = Math.max(5, Number(process.env.HQ_OPS_ALERT_COOLDOWN_MINUTES ?? "20"));
+const SCALPING_STALE_MINUTES = Math.max(10, Number(process.env.HQ_OPS_SCALPING_STALE_MINUTES ?? "45"));
+const INTRADAY_STALE_MINUTES = Math.max(60, Number(process.env.HQ_OPS_INTRADAY_STALE_MINUTES ?? "300"));
+
+type SignalMode = "scalping" | "intraday";
+
+type ActiveSignalRow = {
+  id: string;
+  brandId: BrandId;
+  mode: SignalMode;
+  livePrice: number | null;
+  pair: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+type OpsAlertStateRow = {
+  alert_key: string;
+  status: string;
+  last_sent_at: string | null;
+};
 
 function normalizePackageName(raw: unknown) {
   const text = typeof raw === "string" ? raw.trim() : "";
@@ -74,6 +108,280 @@ function normalizeAgentName(raw: unknown) {
   const lowered = text.toLowerCase();
   if (lowered === "null" || lowered === "n/a" || lowered === "-") return "Direct";
   return text;
+}
+
+function parseChatIds(raw: string | null | undefined) {
+  if (!raw) return [];
+  return raw
+    .split(/[\n,;]+/g)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function parseNumber(raw: unknown) {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string") {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function parseIsoDate(raw: string | null | undefined) {
+  if (!raw) return null;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function minutesSince(value: string | null | undefined) {
+  const date = parseIsoDate(value);
+  if (!date) return null;
+  return Math.floor((Date.now() - date.getTime()) / (1000 * 60));
+}
+
+function alertTitleForMode(mode: SignalMode) {
+  return mode === "scalping" ? "Scalping feed issue" : "Intraday feed issue";
+}
+
+function buildActiveSignalMap(rows: ActiveSignalRow[]) {
+  const map = new Map<string, ActiveSignalRow>();
+  for (const row of rows) {
+    const key = `${row.brandId}:${row.mode}`;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, row);
+      continue;
+    }
+    const currentStamp = parseIsoDate(row.updatedAt ?? row.createdAt)?.getTime() ?? 0;
+    const existingStamp = parseIsoDate(existing.updatedAt ?? existing.createdAt)?.getTime() ?? 0;
+    if (currentStamp >= existingStamp) {
+      map.set(key, row);
+    }
+  }
+  return map;
+}
+
+async function loadOpsAlerts(supabase: SupabaseClient): Promise<HqOpsAlert[]> {
+  const brandIds = brands.map((brand) => brand.id);
+  const { data, error } = await supabase
+    .from(SIGNAL_TABLE)
+    .select("id,brand_id,mode,live_price,pair,created_at,updated_at")
+    .in("brand_id", brandIds)
+    .eq("status", "active")
+    .in("mode", ["scalping", "intraday"]);
+
+  if (error) {
+    throw new Error(`[HQ overview] Failed loading active signal state: ${error.message}`);
+  }
+
+  const activeRows: ActiveSignalRow[] = (data ?? []).map((row) => ({
+    id: String(row.id),
+    brandId: String(row.brand_id) as BrandId,
+    mode: row.mode === "intraday" ? "intraday" : "scalping",
+    livePrice: parseNumber(row.live_price),
+    pair: typeof row.pair === "string" && row.pair.trim().length > 0 ? row.pair.trim().toUpperCase() : "XAUUSD",
+    createdAt: typeof row.created_at === "string" ? row.created_at : null,
+    updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
+  }));
+
+  const latestByMode = buildActiveSignalMap(activeRows);
+  const alerts: HqOpsAlert[] = [];
+
+  for (const brand of brands) {
+    for (const mode of ["scalping", "intraday"] as const) {
+      const key = `${brand.id}:${mode}`;
+      const row = latestByMode.get(key);
+      if (!row) {
+        alerts.push({
+          key: `missing-active:${brand.id}:${mode}`,
+          brandId: brand.id,
+          mode,
+          severity: "critical",
+          title: `${brand.displayName} ${mode.toUpperCase()} missing active signal`,
+          message: `${alertTitleForMode(mode)}. No active signal found for ${brand.displayName}.`,
+        });
+        continue;
+      }
+
+      const staleMinutes = minutesSince(row.updatedAt ?? row.createdAt);
+      const staleThreshold = mode === "intraday" ? INTRADAY_STALE_MINUTES : SCALPING_STALE_MINUTES;
+
+      if (row.livePrice === null || row.livePrice <= 0) {
+        alerts.push({
+          key: `live-price-zero:${brand.id}:${mode}`,
+          brandId: brand.id,
+          mode,
+          severity: "warning",
+          title: `${brand.displayName} ${mode.toUpperCase()} live price not updated`,
+          message: `Active signal exists but live price is empty/0 for ${brand.displayName}.`,
+        });
+      }
+
+      if (staleMinutes !== null && staleMinutes > staleThreshold) {
+        alerts.push({
+          key: `stale-feed:${brand.id}:${mode}`,
+          brandId: brand.id,
+          mode,
+          severity: "warning",
+          title: `${brand.displayName} ${mode.toUpperCase()} feed looks stale`,
+          message: `No update for about ${staleMinutes} minutes (threshold ${staleThreshold}m).`,
+        });
+      }
+    }
+  }
+
+  return alerts;
+}
+
+async function sendTelegramMessage(token: string, chatId: string, text: string) {
+  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      parse_mode: "Markdown",
+      disable_web_page_preview: true,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Telegram HTTP ${response.status}`);
+  }
+}
+
+function buildAlertMessage(alert: HqOpsAlert) {
+  const time = new Date().toLocaleString("en-GB", { timeZone: "Asia/Kuala_Lumpur", hour12: false });
+  const severity = alert.severity === "critical" ? "CRITICAL" : "WARNING";
+  return [
+    "*HQ OPS ALERT*",
+    `Severity: *${severity}*`,
+    `Brand: *${alert.brandId?.toUpperCase() ?? "ALL"}*`,
+    `Mode: *${alert.mode?.toUpperCase() ?? "-"}*`,
+    `Issue: ${alert.title}`,
+    `Detail: ${alert.message}`,
+    `Time: ${time} MYT`,
+  ].join("\n");
+}
+
+async function dispatchOpsAlertsToTelegram(supabase: SupabaseClient, alerts: HqOpsAlert[]) {
+  const nowIso = new Date().toISOString();
+  const alertMap = new Map(alerts.map((alert) => [alert.key, alert]));
+  const alertKeys = Array.from(alertMap.keys());
+
+  const existingStateRes = await supabase
+    .from(OPS_ALERT_STATE_TABLE)
+    .select("alert_key,status,last_sent_at");
+
+  if (existingStateRes.error) {
+    const code = (existingStateRes.error as { code?: string }).code;
+    if (code === "42P01") {
+      console.warn("[HQ ops] Missing table hq_ops_alert_state. Run SQL migration first.");
+      return;
+    }
+    console.warn("[HQ ops] Failed reading alert state:", existingStateRes.error.message);
+    return;
+  }
+
+  const stateRows = (existingStateRes.data ?? []) as OpsAlertStateRow[];
+  const stateMap = new Map(stateRows.map((row) => [row.alert_key, row]));
+  const activeStateKeys = stateRows.filter((row) => row.status === "active").map((row) => row.alert_key);
+  const resolvedKeys = activeStateKeys.filter((key) => !alertMap.has(key));
+
+  if (alertKeys.length > 0) {
+    const upsertRows = alerts.map((alert) => ({
+      alert_key: alert.key,
+      brand_id: alert.brandId,
+      mode: alert.mode,
+      severity: alert.severity,
+      title: alert.title,
+      message: alert.message,
+      status: "active",
+      last_seen_at: nowIso,
+      updated_at: nowIso,
+    }));
+    const upsertRes = await supabase.from(OPS_ALERT_STATE_TABLE).upsert(upsertRows, { onConflict: "alert_key" });
+    if (upsertRes.error) {
+      console.warn("[HQ ops] Failed upserting active alerts:", upsertRes.error.message);
+    }
+  }
+
+  if (resolvedKeys.length > 0) {
+    const resolveRes = await supabase
+      .from(OPS_ALERT_STATE_TABLE)
+      .update({
+        status: "resolved",
+        resolved_at: nowIso,
+        updated_at: nowIso,
+      })
+      .in("alert_key", resolvedKeys);
+    if (resolveRes.error) {
+      console.warn("[HQ ops] Failed marking resolved alerts:", resolveRes.error.message);
+    }
+  }
+
+  const coolDownMs = OPS_ALERT_COOLDOWN_MINUTES * 60 * 1000;
+  const needsSend = alerts.filter((alert) => {
+    const state = stateMap.get(alert.key);
+    if (!state?.last_sent_at) return true;
+    const sentAt = parseIsoDate(state.last_sent_at);
+    if (!sentAt) return true;
+    return Date.now() - sentAt.getTime() >= coolDownMs;
+  });
+
+  if (needsSend.length === 0) {
+    return;
+  }
+
+  const botsRes = await supabase
+    .from(TELEGRAM_BOT_TABLE)
+    .select("brand_id,bot_name,bot_token_secret_ref,channel_id,is_active")
+    .eq("bot_name", TELEGRAM_REGISTRATION_BOT_NAME)
+    .eq("is_active", true)
+    .in("brand_id", brands.map((brand) => brand.id));
+
+  if (botsRes.error) {
+    console.warn("[HQ ops] Failed loading telegram bots:", botsRes.error.message);
+    return;
+  }
+
+  const botByBrand = new Map<BrandId, { token: string; chatIds: string[] }>();
+  for (const row of botsRes.data ?? []) {
+    const brandId = typeof row.brand_id === "string" ? row.brand_id as BrandId : null;
+    const token = typeof row.bot_token_secret_ref === "string" ? row.bot_token_secret_ref.trim() : "";
+    const chatIds = parseChatIds(typeof row.channel_id === "string" ? row.channel_id : "");
+    if (!brandId || !token || chatIds.length === 0) continue;
+    botByBrand.set(brandId, { token, chatIds });
+  }
+
+  const sentKeys = new Set<string>();
+  for (const alert of needsSend) {
+    if (!alert.brandId) continue;
+    const bot = botByBrand.get(alert.brandId);
+    if (!bot) continue;
+
+    let ok = true;
+    for (const chatId of bot.chatIds) {
+      try {
+        await sendTelegramMessage(bot.token, chatId, buildAlertMessage(alert));
+      } catch (error) {
+        ok = false;
+        console.warn("[HQ ops] Telegram send failed:", error);
+      }
+    }
+
+    if (ok) sentKeys.add(alert.key);
+  }
+
+  if (sentKeys.size > 0) {
+    const updateRes = await supabase
+      .from(OPS_ALERT_STATE_TABLE)
+      .update({ last_sent_at: nowIso, updated_at: nowIso })
+      .in("alert_key", Array.from(sentKeys));
+    if (updateRes.error) {
+      console.warn("[HQ ops] Failed updating last_sent_at:", updateRes.error.message);
+    }
+  }
 }
 
 function labelForBrandId(brandId: string) {
@@ -159,6 +467,9 @@ export async function getHqOverviewSnapshot(): Promise<HqOverviewSnapshot | null
   const { startIso: todayStartIso, endIso: todayEndIso } = getTradingDayRangeIso(boundary);
 
   try {
+    const opsAlerts = await loadOpsAlerts(supabase);
+    await dispatchOpsAlertsToTelegram(supabase, opsAlerts);
+
     const metricsEntries = await Promise.all(
       brands.map(async (brand) => [brand.id, await loadBrandMetrics(supabase, brand.id, todayStartIso)] as const),
     );
@@ -258,6 +569,7 @@ export async function getHqOverviewSnapshot(): Promise<HqOverviewSnapshot | null
       },
       topAgents,
       packageMix,
+      opsAlerts,
       brands: brandMetrics,
     };
   } catch (error) {

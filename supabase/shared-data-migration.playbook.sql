@@ -19,6 +19,7 @@ insert into public.brands (
 values
   ('kafra', 'KAFRA SIGNAL', 'KAFRA SIGNAL', 'signal.kafra.ai', 'kafrasignal/kafrasignal', 'kafrasignal', 'KAFRA SIGNAL', 'core'),
   ('sarjan', 'SARJAN SIGNAL', 'SARJAN SIGNAL', 'sarjansignal.ezos.my', 'sarjansignal/sarjansignal', 'sarjansignal', 'SARJAN SIGNAL', 'white_label'),
+  ('kapitan', 'KAPITAN SIGNAL', 'KAPITAN SIGNAL', 'kapitan.ezos.my', 'kapitansignal/kapitansignal', 'kapitansignal', 'KAPITAN SIGNAL', 'white_label'),
   ('richjoker', 'RICH JOKER', 'RICH JOKER INDI', 'richjoker.ezos.my', 'richjokerindi/richjokerindi', 'richjoker', 'RICH JOKER INDI', 'white_label'),
   ('shinobi', 'SHINOBI', 'SHINOBI INDI', 'shinobi.ezos.my', 'shinobiindi/shinobiindi', 'shinobi', 'SHINOBI INDI', 'white_label')
 on conflict (id) do update set
@@ -338,7 +339,7 @@ $$;
 -- A) counts by brand
 create or replace view hq_migration.brand_tally as
 with base as (
-  select id as brand_id from public.brands where id in ('kafra', 'sarjan', 'richjoker', 'shinobi')
+  select id as brand_id from public.brands where id in ('kafra', 'sarjan', 'kapitan', 'richjoker', 'shinobi')
 )
 select
   b.brand_id,
@@ -357,24 +358,25 @@ order by b.brand_id;
 create or replace view hq_migration.unknown_brand_rows as
 select 'subscribers' as table_name, count(*) as unknown_rows
 from public.subscribers
-where brand_id not in ('kafra', 'sarjan', 'richjoker', 'shinobi')
+where brand_id not in ('kafra', 'sarjan', 'kapitan', 'richjoker', 'shinobi')
 union all
 select 'access_keys' as table_name, count(*) as unknown_rows
 from public.access_keys
-where brand_id not in ('kafra', 'sarjan', 'richjoker', 'shinobi')
+where brand_id not in ('kafra', 'sarjan', 'kapitan', 'richjoker', 'shinobi')
 union all
 select 'signals' as table_name, count(*) as unknown_rows
 from public.signals
-where brand_id not in ('kafra', 'sarjan', 'richjoker', 'shinobi')
+where brand_id not in ('kafra', 'sarjan', 'kapitan', 'richjoker', 'shinobi')
 union all
 select 'performance_logs' as table_name, count(*) as unknown_rows
 from public.performance_logs
-where brand_id not in ('kafra', 'sarjan', 'richjoker', 'shinobi');
+where brand_id not in ('kafra', 'sarjan', 'kapitan', 'richjoker', 'shinobi');
 
 -- Example calls after CSV imports:
 -- select hq_migration.clear_stage('kafra');
 -- select hq_migration.merge_brand_stage('kafra', 'kafra');
 -- select hq_migration.merge_brand_stage('sarjan', 'sarjan');
+-- select hq_migration.merge_brand_stage('kapitan', 'kapitan');
 -- select hq_migration.merge_brand_stage('richjoker', 'richjoker');
 -- select hq_migration.merge_brand_stage('shinobi', 'shinobi');
 -- select * from hq_migration.brand_tally;
