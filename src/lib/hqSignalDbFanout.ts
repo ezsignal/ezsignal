@@ -923,28 +923,28 @@ export async function fanoutSignalToBrandsDb(input: {
 
   const brandPriceDistanceMultiplierMap = await loadBrandPriceDistanceMultiplierMap(input.supabase, input.targetBrands);
 
-  const results: BrandResult[] = [];
-  for (const brandId of input.targetBrands) {
-    let row: BrandResult;
-    if (parsed.event === "price_update") {
-      row = await processPriceUpdate({
-        supabase: input.supabase,
-        brandId,
-        pair: parsed.pair,
-        mode: parsed.mode,
-        livePrice: parsed.livePrice ?? 0,
-      });
-    } else if (parsed.event === "signal_closed") {
-      row = await processSignalClosed({
-        supabase: input.supabase,
-        brandId,
-        pair: parsed.pair,
-        mode: parsed.mode,
-        closePrice: parsed.closePrice ?? 0,
-        outcomeRaw: parsed.outcomeRaw,
-      });
-    } else {
-      row = await processSignalOpen({
+  const jobs = input.targetBrands.map(async (brandId): Promise<BrandResult> => {
+    try {
+      if (parsed.event === "price_update") {
+        return await processPriceUpdate({
+          supabase: input.supabase,
+          brandId,
+          pair: parsed.pair,
+          mode: parsed.mode,
+          livePrice: parsed.livePrice ?? 0,
+        });
+      }
+      if (parsed.event === "signal_closed") {
+        return await processSignalClosed({
+          supabase: input.supabase,
+          brandId,
+          pair: parsed.pair,
+          mode: parsed.mode,
+          closePrice: parsed.closePrice ?? 0,
+          outcomeRaw: parsed.outcomeRaw,
+        });
+      }
+      return await processSignalOpen({
         supabase: input.supabase,
         brandId,
         priceDistanceMultiplier: brandPriceDistanceMultiplierMap[brandId] ?? 1,
@@ -959,9 +959,17 @@ export async function fanoutSignalToBrandsDb(input: {
         tp2: parsed.tp2 ?? 0,
         tp3: parsed.tp3,
       });
+    } catch (error) {
+      return {
+        brandId,
+        event: parsed.event,
+        status: "failed",
+        reason: error instanceof Error ? error.message : "Unhandled brand processing failure",
+      };
     }
-    results.push(row);
-  }
+  });
+
+  const results = await Promise.all(jobs);
 
   const processed = results.filter((row) => row.status === "processed").length;
   const skipped = results.filter((row) => row.status === "skipped").length;
