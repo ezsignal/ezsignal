@@ -11,7 +11,7 @@ export const revalidate = 0;
 function dateText(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("en-GB", { hour12: false });
+  return date.toLocaleString("en-GB", { hour12: false, timeZone: "Asia/Kuala_Lumpur" });
 }
 
 function brandHref(brandId: string | null) {
@@ -90,7 +90,7 @@ export default async function SignalsPage({
                     <th>SL</th>
                     <th>TP1</th>
                     <th>Status</th>
-                    <th>Created</th>
+                    <th>Created (MYT)</th>
                   </tr>
                 </thead>
                 <tbody>
