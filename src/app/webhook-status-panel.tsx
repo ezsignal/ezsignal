@@ -293,8 +293,8 @@ export default function WebhookStatusPanel() {
         </span>
       </div>
 
-      <div className="mb-4 rounded-lg border border-slate-200 bg-white p-3">
-        <p className="mb-2 text-xs font-black uppercase tracking-[0.08em] text-slate-500">Webhook Controls</p>
+      <div className="mb-4 rounded-lg border border-slate-700 bg-slate-900/40 p-3">
+        <p className="mb-2 text-xs font-black uppercase tracking-[0.08em] text-slate-300">Webhook Controls</p>
         <div className="grid gap-2 md:grid-cols-2">
           {[
             { key: "enabled", label: "HQ Webhook Enabled", desc: "Master on/off untuk endpoint webhook HQ." },
@@ -307,7 +307,7 @@ export default function WebhookStatusPanel() {
           ].map((row) => {
             const current = Boolean((data?.flags as Record<string, unknown> | undefined)?.[row.key]);
             return (
-              <label key={row.key} className="rounded-lg border border-slate-100 bg-slate-50 p-2">
+              <label key={row.key} className="rounded-lg border border-slate-700 bg-slate-900/40 p-2">
                 <span className="flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -315,14 +315,14 @@ export default function WebhookStatusPanel() {
                     disabled={savingFlags}
                     onChange={(event) => void saveFlag(row.key, event.target.checked)}
                   />
-                  <span className="text-sm font-black text-slate-800">{row.label}</span>
+                  <span className="text-sm font-black text-slate-100">{row.label}</span>
                 </span>
-                <span className="mt-1 block text-[11px] font-semibold text-slate-500">{row.desc}</span>
+                <span className="mt-1 block text-[11px] font-semibold text-slate-300">{row.desc}</span>
               </label>
             );
           })}
         </div>
-        <p className="mt-2 text-[11px] font-semibold text-slate-500">
+        <p className="mt-2 text-[11px] font-semibold text-slate-300">
           Cadangan: untuk elak duplicate SL/TP scaling, guna `DB Fanout = ON` dan `Allow HTTP with DB = OFF`.
         </p>
       </div>
