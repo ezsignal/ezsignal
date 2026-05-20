@@ -81,7 +81,7 @@ function FlagBadge({ label, on }: { label: string; on: boolean }) {
 function timeShort(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleTimeString("en-GB", { hour12: false });
+  return date.toLocaleTimeString("en-GB", { hour12: false, timeZone: "Asia/Kuala_Lumpur" });
 }
 
 export default function WebhookStatusPanel() {
@@ -389,7 +389,7 @@ export default function WebhookStatusPanel() {
           Enable HQ Telegram Ops Alert
         </label>
         <p className="mt-1 text-[11px] font-semibold text-slate-300">
-          Last update: {opsTgUpdatedAt ? new Date(opsTgUpdatedAt).toLocaleString("en-GB", { hour12: false }) : "-"} | {opsTgLoading ? "syncing..." : "ready"}
+          Last update (MYT): {opsTgUpdatedAt ? new Date(opsTgUpdatedAt).toLocaleString("en-GB", { hour12: false, timeZone: "Asia/Kuala_Lumpur" }) : "-"} | {opsTgLoading ? "syncing..." : "ready"}
         </p>
       </div>
 

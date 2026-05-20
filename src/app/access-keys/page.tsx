@@ -12,7 +12,7 @@ function dateText(value: string | null) {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("en-GB", { hour12: false });
+  return date.toLocaleString("en-GB", { hour12: false, timeZone: "Asia/Kuala_Lumpur" });
 }
 
 function brandHref(brandId: string | null) {
@@ -90,9 +90,9 @@ export default async function AccessKeysPage({
                     <th>Package</th>
                     <th>Key</th>
                     <th>Status</th>
-                    <th>Last Login</th>
-                    <th>Expired At</th>
-                    <th>Created</th>
+                    <th>Last Login (MYT)</th>
+                    <th>Expired At (MYT)</th>
+                    <th>Created (MYT)</th>
                   </tr>
                 </thead>
                 <tbody>

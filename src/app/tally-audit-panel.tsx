@@ -40,7 +40,7 @@ type AuditResponse = {
 function formatSync(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("en-GB", { hour12: false });
+  return date.toLocaleString("en-GB", { hour12: false, timeZone: "Asia/Kuala_Lumpur" });
 }
 
 function toneByGap(value: number) {

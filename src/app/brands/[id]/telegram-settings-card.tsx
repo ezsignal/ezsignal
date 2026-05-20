@@ -22,7 +22,7 @@ function formatTime(value?: string | null) {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("en-GB", { hour12: false });
+  return date.toLocaleString("en-GB", { hour12: false, timeZone: "Asia/Kuala_Lumpur" });
 }
 
 export default function TelegramSettingsCard({ brandId }: { brandId: string }) {
@@ -208,7 +208,7 @@ export default function TelegramSettingsCard({ brandId }: { brandId: string }) {
         </button>
       </div>
 
-      <p className="mt-3 text-xs font-bold text-slate-500">Last update: {formatTime(updatedAt)}</p>
+      <p className="mt-3 text-xs font-bold text-slate-500">Last update (MYT): {formatTime(updatedAt)}</p>
       {message ? (
         <p className="mt-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-bold text-teal-700">
           {message}

@@ -82,7 +82,7 @@ const MAX_ALL_FETCH_ROWS = 50000;
 function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("en-GB", { hour12: false });
+  return date.toLocaleString("en-GB", { hour12: false, timeZone: "Asia/Kuala_Lumpur" });
 }
 
 function csvEscape(value: string | number | null | undefined) {

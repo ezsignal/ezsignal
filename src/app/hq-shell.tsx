@@ -15,7 +15,7 @@ export default async function HqShell({
   const modeNote = runtimeMeta.dbConfigured
     ? "Shared Supabase connection configured."
     : "HQ Supabase service role key/url missing.";
-  const modeSyncedAt = new Date().toLocaleString("en-GB", { hour12: false });
+  const modeSyncedAt = new Date().toLocaleString("en-GB", { hour12: false, timeZone: "Asia/Kuala_Lumpur" });
 
   return (
     <div className="shell">
@@ -50,7 +50,7 @@ export default async function HqShell({
           </p>
           {modeSyncedAt ? (
             <p className="mt-2 text-[11px] font-bold text-slate-500">
-              Synced: {modeSyncedAt}
+              Synced (MYT): {modeSyncedAt}
             </p>
           ) : null}
         </div>

@@ -20,7 +20,7 @@ function formatTime(value?: string | null) {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("en-GB", { hour12: false });
+  return date.toLocaleString("en-GB", { hour12: false, timeZone: "Asia/Kuala_Lumpur" });
 }
 
 export default function SignalScalingCard({ brandId }: { brandId: string }) {
@@ -152,7 +152,7 @@ export default function SignalScalingCard({ brandId }: { brandId: string }) {
           Default multiplier: <span className="font-black">{defaultMultiplier}</span>
         </p>
         <p>
-          Last update: <span className="font-black">{formatTime(updatedAt)}</span>
+          Last update (MYT): <span className="font-black">{formatTime(updatedAt)}</span>
         </p>
       </div>
 

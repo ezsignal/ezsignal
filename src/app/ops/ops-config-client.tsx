@@ -168,7 +168,7 @@ export default function OpsConfigClient() {
                 <th>Fanout</th>
                 <th>Routing</th>
                 <th>Promo</th>
-                <th>Updated</th>
+                <th>Updated (MYT)</th>
               </tr>
             </thead>
             <tbody>
@@ -183,7 +183,7 @@ export default function OpsConfigClient() {
                     <td>{row.fanoutEnabled ? "ON" : "OFF"}</td>
                     <td>{row.routingMode}</td>
                     <td>{row.promoCode ? `${row.promoCode} (${row.promoActive ? "active" : "inactive"})` : "-"}</td>
-                    <td>{row.updatedAt ? new Date(row.updatedAt).toLocaleString("en-GB", { hour12: false }) : "-"}</td>
+                    <td>{row.updatedAt ? new Date(row.updatedAt).toLocaleString("en-GB", { hour12: false, timeZone: "Asia/Kuala_Lumpur" }) : "-"}</td>
                   </tr>
                 );
               })}
