@@ -117,6 +117,9 @@ export default function SignalScalingCard({ brandId }: { brandId: string }) {
         Control TP/SL distance scale for this brand only. <span className="font-black">1.0 = asal</span>,{" "}
         <span className="font-black">0.5 = separuh jarak</span>.
       </p>
+      <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
+        Nota: Perubahan scaling apply untuk signal baru sahaja. Signal yang sedang aktif tidak berubah retroaktif.
+      </p>
 
       <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
         <label className="grid gap-1 text-xs font-black uppercase tracking-[0.1em] text-slate-500">
@@ -167,4 +170,3 @@ export default function SignalScalingCard({ brandId }: { brandId: string }) {
     </div>
   );
 }
-
