@@ -8,6 +8,7 @@ import {
   KeyRound,
   Layers3,
   LockKeyhole,
+  SlidersHorizontal,
   Radio,
   RadioTower,
   Settings2,
@@ -20,6 +21,7 @@ const navItems = [
   { label: "Signals", href: "/signals", icon: RadioTower },
   { label: "Performance", href: "/performance", icon: CircleAlert },
   { label: "Webhook", href: "/webhook", icon: Radio },
+  { label: "Ops Config", href: "/ops", icon: SlidersHorizontal },
   { label: "Supabase", href: "/supabase", icon: Database },
   { label: "Security", href: "/security", icon: LockKeyhole },
 ] as const;
