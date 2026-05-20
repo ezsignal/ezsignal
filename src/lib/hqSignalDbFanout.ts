@@ -358,6 +358,7 @@ async function findActiveSignal(
     .eq("pair", pair)
     .eq("mode", mode)
     .eq("status", "active")
+    .is("master_signal_id", null)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -762,6 +763,7 @@ async function processSignalOpen(args: {
     .eq("mode", mode)
     .eq("action", type)
     .eq("status", "active")
+    .is("master_signal_id", null)
     .gte("created_at", cooldownFromIso)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -906,70 +908,85 @@ export async function fanoutSignalToBrandsDb(input: {
   ingressId?: string | null;
 }): Promise<DbFanoutResult> {
   const parsed = parsePayload(input.payload);
+  const orderedBrands = Array.from(new Set(input.targetBrands)).sort((a, b) => {
+    if (a === "kafra" && b !== "kafra") return -1;
+    if (b === "kafra" && a !== "kafra") return 1;
+    return a.localeCompare(b);
+  });
+
   if (!parsed.ok) {
     await markIngressStatus(input.supabase, input.ingressId, "failed", parsed.error);
     return {
       ok: false,
-      totalBrands: input.targetBrands.length,
+      totalBrands: orderedBrands.length,
       processed: 0,
       skipped: 0,
       duplicates: 0,
-      failed: input.targetBrands.length,
+      failed: orderedBrands.length,
       results: [],
       error: parsed.error,
       status: parsed.status,
     };
   }
 
-  const brandPriceDistanceMultiplierMap = await loadBrandPriceDistanceMultiplierMap(input.supabase, input.targetBrands);
+  const brandPriceDistanceMultiplierMap = await loadBrandPriceDistanceMultiplierMap(input.supabase, orderedBrands);
 
-  const jobs = input.targetBrands.map(async (brandId): Promise<BrandResult> => {
+  const results: BrandResult[] = [];
+  for (const brandId of orderedBrands) {
     try {
       if (parsed.event === "price_update") {
-        return await processPriceUpdate({
-          supabase: input.supabase,
-          brandId,
-          pair: parsed.pair,
-          mode: parsed.mode,
-          livePrice: parsed.livePrice ?? 0,
-        });
+        results.push(
+          await processPriceUpdate({
+            supabase: input.supabase,
+            brandId,
+            pair: parsed.pair,
+            mode: parsed.mode,
+            livePrice: parsed.livePrice ?? 0,
+          }),
+        );
+        continue;
       }
+
       if (parsed.event === "signal_closed") {
-        return await processSignalClosed({
+        results.push(
+          await processSignalClosed({
+            supabase: input.supabase,
+            brandId,
+            pair: parsed.pair,
+            mode: parsed.mode,
+            closePrice: parsed.closePrice ?? 0,
+            outcomeRaw: parsed.outcomeRaw,
+          }),
+        );
+        continue;
+      }
+
+      results.push(
+        await processSignalOpen({
           supabase: input.supabase,
           brandId,
+          priceDistanceMultiplier: brandPriceDistanceMultiplierMap[brandId] ?? 1,
           pair: parsed.pair,
           mode: parsed.mode,
-          closePrice: parsed.closePrice ?? 0,
-          outcomeRaw: parsed.outcomeRaw,
-        });
-      }
-      return await processSignalOpen({
-        supabase: input.supabase,
-        brandId,
-        priceDistanceMultiplier: brandPriceDistanceMultiplierMap[brandId] ?? 1,
-        pair: parsed.pair,
-        mode: parsed.mode,
-        type: parsed.type,
-        status: parsed.status,
-        entryTarget: parsed.entryTarget ?? 0,
-        livePrice: parsed.livePrice ?? 0,
-        sl: parsed.sl ?? 0,
-        tp1: parsed.tp1 ?? 0,
-        tp2: parsed.tp2 ?? 0,
-        tp3: parsed.tp3,
-      });
+          type: parsed.type,
+          status: parsed.status,
+          entryTarget: parsed.entryTarget ?? 0,
+          livePrice: parsed.livePrice ?? 0,
+          sl: parsed.sl ?? 0,
+          tp1: parsed.tp1 ?? 0,
+          tp2: parsed.tp2 ?? 0,
+          tp3: parsed.tp3,
+        }),
+      );
     } catch (error) {
-      return {
+      results.push({
         brandId,
         event: parsed.event,
         status: "failed",
         reason: error instanceof Error ? error.message : "Unhandled brand processing failure",
-      };
+      });
     }
-  });
-
-  const results = await Promise.all(jobs);
+  }
 
   const processed = results.filter((row) => row.status === "processed").length;
   const skipped = results.filter((row) => row.status === "skipped").length;
@@ -989,7 +1006,7 @@ export async function fanoutSignalToBrandsDb(input: {
     event: parsed.event,
     pair: parsed.pair,
     mode: parsed.mode,
-    totalBrands: input.targetBrands.length,
+    totalBrands: orderedBrands.length,
     processed,
     skipped,
     duplicates,
