@@ -52,6 +52,19 @@ type StatusResponse = {
   now: string;
 };
 
+type OpsTelegramResponse = {
+  ok: boolean;
+  telegram?: {
+    configured: boolean;
+    enabled: boolean;
+    hasToken: boolean;
+    tokenMasked: string | null;
+    chatId: string;
+    updatedAt: string | null;
+  };
+  error?: string;
+};
+
 function FlagBadge({ label, on }: { label: string; on: boolean }) {
   return (
     <span
@@ -79,6 +92,12 @@ export default function WebhookStatusPanel() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [adminKey, setAdminKey] = useState("");
   const [savingFlags, setSavingFlags] = useState(false);
+  const [opsTgToken, setOpsTgToken] = useState("");
+  const [opsTgChatId, setOpsTgChatId] = useState("");
+  const [opsTgEnabled, setOpsTgEnabled] = useState(true);
+  const [opsTgMasked, setOpsTgMasked] = useState<string | null>(null);
+  const [opsTgUpdatedAt, setOpsTgUpdatedAt] = useState<string | null>(null);
+  const [opsTgLoading, setOpsTgLoading] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -113,9 +132,25 @@ export default function WebhookStatusPanel() {
     }
   }, []);
 
+  const loadOpsTelegram = useCallback(async () => {
+    setOpsTgLoading(true);
+    try {
+      const response = await fetch("/api/hq/ops-alert-telegram", { cache: "no-store" });
+      const json = (await response.json()) as OpsTelegramResponse;
+      if (!response.ok || !json.ok || !json.telegram) return;
+      setOpsTgEnabled(Boolean(json.telegram.enabled));
+      setOpsTgChatId(json.telegram.chatId ?? "");
+      setOpsTgMasked(json.telegram.tokenMasked ?? null);
+      setOpsTgUpdatedAt(json.telegram.updatedAt ?? null);
+    } finally {
+      setOpsTgLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     const kickoff = setTimeout(() => {
       void loadStatus();
+      void loadOpsTelegram();
     }, 0);
     const timer = setInterval(() => {
       void loadStatus();
@@ -124,7 +159,55 @@ export default function WebhookStatusPanel() {
       clearTimeout(kickoff);
       clearInterval(timer);
     };
-  }, [loadStatus]);
+  }, [loadOpsTelegram, loadStatus]);
+
+  const saveOpsTelegram = useCallback(
+    async (action: "save" | "test") => {
+      const key = adminKey.trim();
+      if (!key) {
+        setActionMessage("Isi admin key dulu untuk setup Telegram HQ.");
+        return;
+      }
+      setOpsTgLoading(true);
+      try {
+        const response = await fetch("/api/hq/ops-alert-telegram", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-admin-key": key,
+          },
+          body: JSON.stringify({
+            action,
+            botToken: opsTgToken,
+            chatId: opsTgChatId,
+            enabled: opsTgEnabled,
+          }),
+        });
+        const json = (await response.json().catch(() => ({}))) as OpsTelegramResponse;
+        if (!response.ok || !json.ok) {
+          setActionMessage(json.error ?? "Failed saving HQ Telegram settings.");
+          return;
+        }
+        if (json.telegram) {
+          setOpsTgEnabled(Boolean(json.telegram.enabled));
+          setOpsTgChatId(json.telegram.chatId ?? "");
+          setOpsTgMasked(json.telegram.tokenMasked ?? null);
+          setOpsTgUpdatedAt(json.telegram.updatedAt ?? null);
+        }
+        if (action === "test") {
+          setActionMessage("Test Telegram berjaya dihantar.");
+        } else {
+          setOpsTgToken("");
+          setActionMessage("HQ Telegram settings saved.");
+        }
+      } catch (error) {
+        setActionMessage(error instanceof Error ? error.message : "Failed saving HQ Telegram settings.");
+      } finally {
+        setOpsTgLoading(false);
+      }
+    },
+    [adminKey, opsTgChatId, opsTgEnabled, opsTgToken],
+  );
 
   const counts = useMemo(
     () =>
@@ -269,6 +352,45 @@ export default function WebhookStatusPanel() {
           <Repeat2 className={`h-4 w-4 ${actionLoading ? "animate-spin" : ""}`} />
           Replay Latest Signal
         </button>
+      </div>
+
+      <div className="mb-4 rounded-lg border border-slate-700 bg-slate-900/40 p-3">
+        <p className="mb-2 text-xs font-black uppercase tracking-[0.08em] text-slate-300">HQ Telegram Ops Alert</p>
+        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] lg:items-end">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-black uppercase tracking-[0.08em] text-slate-400">Bot Token</span>
+            <input
+              value={opsTgToken}
+              onChange={(event) => setOpsTgToken(event.target.value)}
+              type="password"
+              placeholder={opsTgMasked ? `Current: ${opsTgMasked}` : "Paste Telegram Bot Token"}
+              className="w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-sm font-semibold text-slate-100 focus:border-sky-400 focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-black uppercase tracking-[0.08em] text-slate-400">Chat ID(s)</span>
+            <input
+              value={opsTgChatId}
+              onChange={(event) => setOpsTgChatId(event.target.value)}
+              type="text"
+              placeholder="Contoh: -10012345, -10067890"
+              className="w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-sm font-semibold text-slate-100 focus:border-sky-400 focus:outline-none"
+            />
+          </label>
+          <button type="button" className="text-button" disabled={opsTgLoading} onClick={() => void saveOpsTelegram("save")}>
+            Save Telegram
+          </button>
+          <button type="button" className="text-button" disabled={opsTgLoading} onClick={() => void saveOpsTelegram("test")}>
+            Send Test
+          </button>
+        </div>
+        <label className="mt-2 inline-flex items-center gap-2 text-xs font-bold text-slate-200">
+          <input type="checkbox" checked={opsTgEnabled} onChange={(e) => setOpsTgEnabled(e.target.checked)} />
+          Enable HQ Telegram Ops Alert
+        </label>
+        <p className="mt-1 text-[11px] font-semibold text-slate-300">
+          Last update: {opsTgUpdatedAt ? new Date(opsTgUpdatedAt).toLocaleString("en-GB", { hour12: false }) : "-"} | {opsTgLoading ? "syncing..." : "ready"}
+        </p>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">

@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { brands, type BrandId } from "@/lib/registry";
 import { getTradingDayRangeIso } from "@/lib/hqTradingDay";
 import { getHqTradingDaySettings } from "@/lib/hqTradingDaySettings";
+import { resolveHqOpsTelegramForDispatch } from "@/lib/hqOpsTelegramSettings";
 
 type BrandLiveMetrics = {
   activeUsers: number;
@@ -330,6 +331,33 @@ async function dispatchOpsAlertsToTelegram(supabase: SupabaseClient, alerts: HqO
   });
 
   if (needsSend.length === 0) {
+    return;
+  }
+
+  const hqTelegram = await resolveHqOpsTelegramForDispatch();
+  if (hqTelegram) {
+    const sentKeys = new Set<string>();
+    for (const alert of needsSend) {
+      let ok = true;
+      for (const chatId of hqTelegram.chatIds) {
+        try {
+          await sendTelegramMessage(hqTelegram.token, chatId, buildAlertMessage(alert));
+        } catch (error) {
+          ok = false;
+          console.warn("[HQ ops] HQ Telegram send failed:", error);
+        }
+      }
+      if (ok) sentKeys.add(alert.key);
+    }
+    if (sentKeys.size > 0) {
+      const updateRes = await supabase
+        .from(OPS_ALERT_STATE_TABLE)
+        .update({ last_sent_at: nowIso, updated_at: nowIso })
+        .in("alert_key", Array.from(sentKeys));
+      if (updateRes.error) {
+        console.warn("[HQ ops] Failed updating last_sent_at:", updateRes.error.message);
+      }
+    }
     return;
   }
 
