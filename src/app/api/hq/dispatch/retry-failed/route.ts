@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
-import { dispatchQueuedJobs, getHqSupabaseServiceClient, getWebhookFlags, getWebhookRuntimeMeta } from "@/lib/hqWebhookRuntime";
+import { dispatchQueuedJobs, getHqSupabaseServiceClient, getWebhookRuntimeMeta } from "@/lib/hqWebhookRuntime";
 import { isHqAdminAuthorized } from "@/lib/hqAdminAuth";
+import { getHqWebhookControlFlags } from "@/lib/hqWebhookControlSettings";
 
 export async function POST(request: Request) {
   if (!isHqAdminAuthorized(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized retry request." }, { status: 401 });
   }
 
-  const flags = getWebhookFlags();
+  const flags = await getHqWebhookControlFlags();
   if (!flags.enabled) {
     return NextResponse.json({ ok: false, error: "HQ webhook is disabled.", flags }, { status: 503 });
   }

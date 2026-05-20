@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { dispatchQueuedJobs, getWebhookFlags, getWebhookRuntimeMeta } from "@/lib/hqWebhookRuntime";
+import { dispatchQueuedJobs, getWebhookRuntimeMeta } from "@/lib/hqWebhookRuntime";
 import { isHqAdminAuthorized } from "@/lib/hqAdminAuth";
+import { getHqWebhookControlFlags } from "@/lib/hqWebhookControlSettings";
 
 function resolveRunTokenCandidates() {
   return [process.env.HQ_DISPATCH_RUN_TOKEN?.trim(), process.env.CRON_SECRET?.trim()].filter(
@@ -27,7 +28,7 @@ function resolveLimitFromQuery(request: Request, fallback: number) {
 }
 
 async function runDispatch(request: Request, bodyLimit?: number) {
-  const flags = getWebhookFlags();
+  const flags = await getHqWebhookControlFlags();
   if (!flags.enabled) {
     return NextResponse.json({ ok: false, error: "HQ webhook is disabled.", flags }, { status: 503 });
   }

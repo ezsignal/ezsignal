@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import {
   dispatchQueuedJobs,
   getHqSupabaseServiceClient,
-  getWebhookFlags,
   getWebhookRuntimeMeta,
   planDispatchJobs,
   registerIngressEvent,
   resolveTargetBrands,
 } from "@/lib/hqWebhookRuntime";
 import { isHqAdminAuthorized } from "@/lib/hqAdminAuth";
+import { getHqWebhookControlFlags } from "@/lib/hqWebhookControlSettings";
 
 function asObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Unauthorized replay request." }, { status: 401 });
   }
 
-  const flags = getWebhookFlags();
+  const flags = await getHqWebhookControlFlags();
   if (!flags.enabled) {
     return NextResponse.json({ ok: false, error: "HQ webhook is disabled.", flags }, { status: 503 });
   }

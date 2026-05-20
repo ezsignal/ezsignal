@@ -9,7 +9,11 @@ type StatusResponse = {
     enabled: boolean;
     shadowMode: boolean;
     fanoutEnabled: boolean;
+    dbFanoutEnabled: boolean;
+    allowHttpFanoutWithDb: boolean;
+    eagerDispatchEnabled: boolean;
     performanceEditorEnabled: boolean;
+    source?: "database" | "env";
   };
   backend?: "database" | "memory";
   runtime?: {
@@ -74,6 +78,7 @@ export default function WebhookStatusPanel() {
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [adminKey, setAdminKey] = useState("");
+  const [savingFlags, setSavingFlags] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -173,6 +178,39 @@ export default function WebhookStatusPanel() {
     [adminKey, loadStatus],
   );
 
+  const saveFlag = useCallback(
+    async (key: string, value: boolean) => {
+      const token = adminKey.trim();
+      if (!token) {
+        setActionMessage("Isi admin key dulu untuk ubah webhook controls.");
+        return;
+      }
+      setSavingFlags(true);
+      try {
+        const response = await fetch("/api/hq/webhook-flags", {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+            "x-admin-key": token,
+          },
+          body: JSON.stringify({ [key]: value }),
+        });
+        const json = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+        if (!response.ok || !json.ok) {
+          setActionMessage(json.error ?? "Failed updating webhook controls.");
+          return;
+        }
+        setActionMessage("Webhook controls updated.");
+        await loadStatus();
+      } catch (error) {
+        setActionMessage(error instanceof Error ? error.message : "Failed updating webhook controls.");
+      } finally {
+        setSavingFlags(false);
+      }
+    },
+    [adminKey, loadStatus],
+  );
+
   return (
     <section id="webhook" className="mb-6 panel p-4">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -237,7 +275,14 @@ export default function WebhookStatusPanel() {
         <FlagBadge label="Enabled" on={Boolean(data?.flags.enabled)} />
         <FlagBadge label="Shadow" on={Boolean(data?.flags.shadowMode)} />
         <FlagBadge label="Fanout" on={Boolean(data?.flags.fanoutEnabled)} />
+        <FlagBadge label="DB Fanout" on={Boolean(data?.flags.dbFanoutEnabled)} />
+        <FlagBadge label="HTTP+DB" on={Boolean(data?.flags.allowHttpFanoutWithDb)} />
+        <FlagBadge label="Eager" on={Boolean(data?.flags.eagerDispatchEnabled)} />
         <FlagBadge label="Perf Edit" on={Boolean(data?.flags.performanceEditorEnabled)} />
+        <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-700">
+          <span className="status-dot" />
+          Controls: {data?.flags.source ?? "env"}
+        </span>
         <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-700">
           <span className="status-dot" />
           Backend: {data?.runtime?.backend ?? data?.backend ?? "memory"}
@@ -246,6 +291,40 @@ export default function WebhookStatusPanel() {
           <span className="status-dot" />
           DB Config: {data?.runtime?.dbConfigured ? "YES" : "NO"}
         </span>
+      </div>
+
+      <div className="mb-4 rounded-lg border border-slate-200 bg-white p-3">
+        <p className="mb-2 text-xs font-black uppercase tracking-[0.08em] text-slate-500">Webhook Controls</p>
+        <div className="grid gap-2 md:grid-cols-2">
+          {[
+            { key: "enabled", label: "HQ Webhook Enabled", desc: "Master on/off untuk endpoint webhook HQ." },
+            { key: "shadowMode", label: "Shadow Mode", desc: "Terima payload tapi tidak menulis signal/fanout." },
+            { key: "fanoutEnabled", label: "HTTP Fanout Enabled", desc: "Benarkan queue dispatch ke webhook URL brand." },
+            { key: "dbFanoutEnabled", label: "DB Fanout Enabled", desc: "Tulis signal terus ke DB HQ per brand." },
+            { key: "allowHttpFanoutWithDb", label: "Allow HTTP with DB", desc: "Jika ON, DB fanout + HTTP fanout jalan serentak." },
+            { key: "eagerDispatchEnabled", label: "Eager Dispatch", desc: "Terus trigger queue dispatch selepas ingress masuk." },
+            { key: "performanceEditorEnabled", label: "Performance Editor", desc: "Buka akses edit performance dari panel HQ." },
+          ].map((row) => {
+            const current = Boolean((data?.flags as Record<string, unknown> | undefined)?.[row.key]);
+            return (
+              <label key={row.key} className="rounded-lg border border-slate-100 bg-slate-50 p-2">
+                <span className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={current}
+                    disabled={savingFlags}
+                    onChange={(event) => void saveFlag(row.key, event.target.checked)}
+                  />
+                  <span className="text-sm font-black text-slate-800">{row.label}</span>
+                </span>
+                <span className="mt-1 block text-[11px] font-semibold text-slate-500">{row.desc}</span>
+              </label>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[11px] font-semibold text-slate-500">
+          Cadangan: untuk elak duplicate SL/TP scaling, guna `DB Fanout = ON` dan `Allow HTTP with DB = OFF`.
+        </p>
       </div>
 
       <div className="mb-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-7">

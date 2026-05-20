@@ -3,7 +3,6 @@ import {
   dispatchQueuedJobs,
   findIngressByEventKey,
   getHqSupabaseServiceClient,
-  getWebhookFlags,
   getWebhookRuntimeMeta,
   planDispatchJobs,
   registerIngressEvent,
@@ -13,16 +12,16 @@ import {
   verifyWebhookSignature,
 } from "@/lib/hqWebhookRuntime";
 import { fanoutSignalToBrandsDb } from "@/lib/hqSignalDbFanout";
-
-function readBooleanEnv(key: string, fallback: boolean) {
-  const value = process.env[key];
-  if (!value) return fallback;
-  const normalized = value.trim().toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes";
-}
+import { getHqWebhookControlFlags } from "@/lib/hqWebhookControlSettings";
 
 export async function POST(request: Request) {
-  const flags = getWebhookFlags();
+  const runtimeFlags = await getHqWebhookControlFlags();
+  const flags = {
+    enabled: runtimeFlags.enabled,
+    shadowMode: runtimeFlags.shadowMode,
+    fanoutEnabled: runtimeFlags.fanoutEnabled,
+    performanceEditorEnabled: runtimeFlags.performanceEditorEnabled,
+  };
   if (!flags.enabled) {
     return NextResponse.json(
       {
@@ -79,8 +78,8 @@ export async function POST(request: Request) {
   });
   const targetBrands = resolveTargetBrands(safePayload);
 
-  const dbFanoutEnabled = readBooleanEnv("HQ_WEBHOOK_DB_FANOUT_ENABLED", true);
-  const allowHttpFanoutWithDb = readBooleanEnv("HQ_WEBHOOK_ALLOW_HTTP_FANOUT_WITH_DB", false);
+  const dbFanoutEnabled = runtimeFlags.dbFanoutEnabled;
+  const allowHttpFanoutWithDb = runtimeFlags.allowHttpFanoutWithDb;
   let dbFanoutResult: Awaited<ReturnType<typeof fanoutSignalToBrandsDb>> | null = null;
 
   if (!flags.shadowMode && dbFanoutEnabled) {
@@ -137,7 +136,7 @@ export async function POST(request: Request) {
       })
     ).length;
 
-    const eagerDispatchEnabled = readBooleanEnv("HQ_WEBHOOK_EAGER_DISPATCH_ENABLED", true);
+    const eagerDispatchEnabled = runtimeFlags.eagerDispatchEnabled;
     if (eagerDispatchEnabled && plannedJobs > 0) {
       eagerDispatchResult = await dispatchQueuedJobs(Math.max(20, plannedJobs));
     }
@@ -169,6 +168,7 @@ export async function POST(request: Request) {
     eagerDispatch: eagerDispatchResult,
     signature,
     flags,
+    controlsSource: runtimeFlags.source,
     runtime: getWebhookRuntimeMeta(),
   });
 }
