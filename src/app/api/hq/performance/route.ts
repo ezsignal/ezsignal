@@ -6,10 +6,13 @@ const ALLOWED_OUTCOMES = new Set(["tp1", "tp2", "tp3", "be", "sl"]);
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PERFORMANCE_SELECT = "id, brand_id, signal_id, pair, mode, action, outcome, points, net_pips, peak_pips, price, created_at";
 const ALL_BRAND_IDS: BrandId[] = ["kafra", "sarjan", "richjoker", "shinobi", "kapitan"];
+const MAX_DELETE_ROWS_RETURNED = 1000;
+const MAX_RESTORE_ROWS_PER_REQUEST = 1000;
 
 type PerformanceRow = {
   id: string;
   brand_id: string;
+  signal_id: string | null;
   mode: "scalping" | "intraday";
   type: "buy" | "sell";
   outcome: "tp1" | "tp2" | "tp3" | "be" | "sl";
@@ -36,6 +39,7 @@ type UpdatePerformanceBody = {
   editedBy?: string | null;
   csv?: string;
   ids?: string[];
+  restoreRows?: Array<Record<string, unknown>>;
 };
 
 type CsvPerfRecord = {
@@ -59,6 +63,20 @@ type PerfFilters = {
   fromIso: string | null;
   toIso: string | null;
   q: string;
+};
+
+type NormalizedRestoreRow = {
+  id: string | null;
+  brandId: BrandId;
+  signalId: string | null;
+  pair: string;
+  mode: "scalping" | "intraday";
+  action: "buy" | "sell";
+  outcome: "tp1" | "tp2" | "tp3" | "be" | "sl";
+  netPips: number | null;
+  peakPips: number | null;
+  price: number | null;
+  createdAtIso: string;
 };
 
 function parseNumber(value: unknown) {
@@ -170,6 +188,7 @@ function normalizePerformanceRow(row: Record<string, unknown>, note: string | nu
   return {
     id: String(row.id),
     brand_id: String(row.brand_id),
+    signal_id: typeof row.signal_id === "string" ? row.signal_id : null,
     mode: row.mode === "intraday" ? "intraday" : "scalping",
     type: row.action === "sell" ? "sell" : "buy",
     outcome: (typeof row.outcome === "string" && ALLOWED_OUTCOMES.has(row.outcome)) ? row.outcome as PerformanceRow["outcome"] : "be",
@@ -245,6 +264,93 @@ function applyFilters<T>(query: T, filters: PerfFilters) {
   if (filters.fromIso) scoped = scoped.gte("created_at", filters.fromIso);
   if (filters.toIso) scoped = scoped.lte("created_at", filters.toIso);
   return scoped;
+}
+
+function normalizeRestoreRows(
+  rows: Array<Record<string, unknown>>,
+  fallbackBrandId: BrandId | null,
+) {
+  const accepted: NormalizedRestoreRow[] = [];
+  const skipped: Array<{ index: number; reason: string }> = [];
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const raw = rows[index];
+    const rawBrand = typeof raw.brand_id === "string"
+      ? raw.brand_id
+      : typeof raw.brandId === "string"
+        ? raw.brandId
+        : null;
+    const brandId = normalizeBrandId(rawBrand ?? fallbackBrandId ?? null);
+    if (!brandId) {
+      skipped.push({ index, reason: "invalid_brand_id" });
+      continue;
+    }
+
+    const modeRaw = typeof raw.mode === "string" ? raw.mode.trim().toLowerCase() : "";
+    const mode = modeRaw === "intraday" ? "intraday" : modeRaw === "scalping" ? "scalping" : null;
+    if (!mode) {
+      skipped.push({ index, reason: "invalid_mode" });
+      continue;
+    }
+
+    const actionRaw = typeof raw.action === "string"
+      ? raw.action.trim().toLowerCase()
+      : typeof raw.type === "string"
+        ? raw.type.trim().toLowerCase()
+        : "";
+    const action = actionRaw === "sell" ? "sell" : actionRaw === "buy" ? "buy" : null;
+    if (!action) {
+      skipped.push({ index, reason: "invalid_action" });
+      continue;
+    }
+
+    const outcomeRaw = typeof raw.outcome === "string" ? raw.outcome.trim().toLowerCase() : "be";
+    const outcome = ALLOWED_OUTCOMES.has(outcomeRaw) ? (outcomeRaw as NormalizedRestoreRow["outcome"]) : "be";
+
+    const pair = typeof raw.pair === "string" && raw.pair.trim().length > 0
+      ? raw.pair.trim().toUpperCase()
+      : "XAUUSD";
+
+    const createdAtRaw = typeof raw.created_at === "string"
+      ? raw.created_at
+      : typeof raw.createdAt === "string"
+        ? raw.createdAt
+        : "";
+    const createdAtIso = parseDateToIso(createdAtRaw);
+    if (!createdAtIso) {
+      skipped.push({ index, reason: "invalid_created_at" });
+      continue;
+    }
+
+    const idRaw = typeof raw.id === "string" ? raw.id.trim() : "";
+    const signalIdRaw = typeof raw.signal_id === "string"
+      ? raw.signal_id.trim()
+      : typeof raw.signalId === "string"
+        ? raw.signalId.trim()
+        : "";
+
+    const netCandidate = parseNumber(raw.net_pips ?? raw.netPips ?? raw.points);
+    const netPips = roundPips(netCandidate);
+    const peakCandidate = parseNumber(raw.peak_pips ?? raw.peakPips);
+    const peakPips = roundPips(peakCandidate ?? netPips);
+    const price = parseNumber(raw.price);
+
+    accepted.push({
+      id: UUID_REGEX.test(idRaw) ? idRaw : null,
+      brandId,
+      signalId: UUID_REGEX.test(signalIdRaw) ? signalIdRaw : null,
+      pair,
+      mode,
+      action,
+      outcome,
+      netPips,
+      peakPips,
+      price,
+      createdAtIso,
+    });
+  }
+
+  return { accepted, skipped };
 }
 
 function csvHeaderIndex(header: string[], names: string[]) {
@@ -770,6 +876,172 @@ export async function POST(request: Request) {
     return NextResponse.json({ ...imported, flags, runtime: getWebhookRuntimeMeta() });
   }
 
+  if (Array.isArray(body.restoreRows) && body.restoreRows.length > 0) {
+    const fallbackBrandId = normalizeBrandId(body.brandId);
+    const restoreCandidates = body.restoreRows
+      .slice(0, MAX_RESTORE_ROWS_PER_REQUEST)
+      .map((item) => asObject(item));
+    const truncated = body.restoreRows.length > restoreCandidates.length;
+    const { accepted, skipped } = normalizeRestoreRows(restoreCandidates, fallbackBrandId);
+
+    if (!accepted.length) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "No valid restore rows found.",
+          skipped,
+          truncated,
+        },
+        { status: 400 },
+      );
+    }
+
+    const reasonInput = typeof body.note === "string"
+      ? body.note
+      : typeof body.reason === "string"
+        ? body.reason
+        : "";
+    const reason = reasonInput.trim().length > 0 ? reasonInput.trim().slice(0, 500) : "Restored from HQ deleted snapshot";
+    const editedBy = body.editedBy && UUID_REGEX.test(body.editedBy) ? body.editedBy : null;
+
+    let inserted = 0;
+    let updated = 0;
+    let skippedByRules = skipped.length;
+    let auditLogged = 0;
+    const failed: Array<{ index: number; reason: string }> = [];
+    const updatedBrands = new Set<BrandId>();
+
+    for (let index = 0; index < accepted.length; index += 1) {
+      const row = accepted[index];
+      const basePayload: Record<string, unknown> = {
+        brand_id: row.brandId,
+        signal_id: row.signalId,
+        pair: row.pair,
+        mode: row.mode,
+        action: row.action,
+        outcome: row.outcome,
+        points: row.netPips,
+        net_pips: row.netPips,
+        peak_pips: row.peakPips,
+        price: row.price,
+        created_at: row.createdAtIso,
+      };
+
+      try {
+        let targetId: string | null = null;
+        let previousOutcome: string | null = null;
+
+        if (row.id) {
+          const { data: existingById, error: existingByIdError } = await supabase
+            .from("performance_logs")
+            .select("id, outcome")
+            .eq("id", row.id)
+            .eq("brand_id", row.brandId)
+            .limit(1)
+            .maybeSingle();
+          if (existingByIdError) {
+            failed.push({ index, reason: existingByIdError.message });
+            continue;
+          }
+          if (existingById) {
+            targetId = String(existingById.id);
+            previousOutcome = typeof existingById.outcome === "string" ? existingById.outcome : null;
+          }
+        }
+
+        if (!targetId && row.signalId) {
+          const { data: existingBySignalRows, error: existingBySignalError } = await supabase
+            .from("performance_logs")
+            .select("id, outcome")
+            .eq("brand_id", row.brandId)
+            .eq("signal_id", row.signalId)
+            .order("created_at", { ascending: false })
+            .limit(1);
+          if (existingBySignalError) {
+            failed.push({ index, reason: existingBySignalError.message });
+            continue;
+          }
+          const existingBySignal = (existingBySignalRows ?? [])[0] as Record<string, unknown> | undefined;
+          if (existingBySignal) {
+            targetId = String(existingBySignal.id);
+            previousOutcome = typeof existingBySignal.outcome === "string" ? existingBySignal.outcome : null;
+          }
+        }
+
+        if (targetId) {
+          const { error: updateError } = await supabase
+            .from("performance_logs")
+            .update(basePayload)
+            .eq("id", targetId)
+            .eq("brand_id", row.brandId);
+          if (updateError) {
+            failed.push({ index, reason: updateError.message });
+            continue;
+          }
+          updated += 1;
+        } else {
+          const insertPayload = { ...basePayload } as Record<string, unknown>;
+          if (row.id) insertPayload.id = row.id;
+
+          const { data: insertedRow, error: insertError } = await supabase
+            .from("performance_logs")
+            .insert(insertPayload)
+            .select("id")
+            .maybeSingle();
+
+          if (insertError) {
+            failed.push({ index, reason: insertError.message });
+            continue;
+          }
+          if (!insertedRow || !insertedRow.id) {
+            skippedByRules += 1;
+            continue;
+          }
+          targetId = String(insertedRow.id);
+          previousOutcome = null;
+          inserted += 1;
+        }
+
+        if (!targetId) {
+          skippedByRules += 1;
+          continue;
+        }
+
+        updatedBrands.add(row.brandId);
+        const { error: auditError } = await supabase.from("performance_log_edits").insert({
+          brand_id: row.brandId,
+          log_id: targetId,
+          previous_outcome: previousOutcome,
+          next_outcome: row.outcome,
+          reason,
+          edited_by: editedBy,
+        });
+        if (!auditError) auditLogged += 1;
+      } catch (restoreError) {
+        failed.push({
+          index,
+          reason: restoreError instanceof Error ? restoreError.message : "Unknown restore error",
+        });
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      flags,
+      runtime: getWebhookRuntimeMeta(),
+      restored: inserted + updated,
+      inserted,
+      updated,
+      skipped: skippedByRules,
+      failed: failed.length,
+      failedRows: failed,
+      accepted: accepted.length,
+      truncated,
+      updatedBrands: Array.from(updatedBrands),
+      auditLogged,
+    });
+  }
+
   const logId = body.logId?.trim();
   if (!logId) {
     return NextResponse.json({ ok: false, error: "logId is required." }, { status: 400 });
@@ -1139,6 +1411,10 @@ export async function DELETE(request: Request) {
     }
 
     const targetIds = Array.from(new Set(targetRows.map((row) => String(row.id))));
+    const deletedRowsForRestore = targetRows
+      .slice(0, MAX_DELETE_ROWS_RETURNED)
+      .map((row) => normalizePerformanceRow(row));
+    const restoreRowsTruncated = targetRows.length > deletedRowsForRestore.length;
     const { error: deleteError } = await supabase.from("performance_logs").delete().in("id", targetIds);
     if (deleteError) {
       return NextResponse.json({ ok: false, error: deleteError.message }, { status: 500 });
@@ -1162,6 +1438,8 @@ export async function DELETE(request: Request) {
       deleted: targetIds.length,
       auditLogged,
       propagatedAllBrands: propagateAllBrands,
+      deletedRows: deletedRowsForRestore,
+      restoreRowsTruncated,
       flags,
       runtime: getWebhookRuntimeMeta(),
     });
@@ -1202,6 +1480,10 @@ export async function DELETE(request: Request) {
   }
 
   const targetIds = Array.from(new Set(targetRows.map((row) => String(row.id))));
+  const deletedRowsForRestore = targetRows
+    .slice(0, MAX_DELETE_ROWS_RETURNED)
+    .map((row) => normalizePerformanceRow(row));
+  const restoreRowsTruncated = targetRows.length > deletedRowsForRestore.length;
   const { error: deleteError } = await supabase.from("performance_logs").delete().in("id", targetIds);
   if (deleteError) {
     return NextResponse.json({ ok: false, error: deleteError.message }, { status: 500 });
@@ -1229,6 +1511,8 @@ export async function DELETE(request: Request) {
     ok: true,
     deleted: targetIds.length,
     propagatedAllBrands: propagateAllBrands,
+    deletedRows: deletedRowsForRestore,
+    restoreRowsTruncated,
     flags,
     runtime: getWebhookRuntimeMeta(),
     auditLogged,

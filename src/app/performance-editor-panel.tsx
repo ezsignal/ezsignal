@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Download, RefreshCw, Save, Search, Trash2, Upload } from "lucide-react";
+import { Download, RefreshCw, RotateCcw, Save, Search, Trash2, Upload } from "lucide-react";
 import { brands } from "@/lib/registry";
 import {
   formatTradingDayBoundaryLabel,
@@ -14,6 +14,7 @@ import {
 type PerformanceRow = {
   id: string;
   brand_id: string;
+  signal_id: string | null;
   mode: "scalping" | "intraday";
   type: "buy" | "sell";
   outcome: "tp1" | "tp2" | "tp3" | "be" | "sl";
@@ -71,6 +72,13 @@ type DraftRow = {
   note: string;
 };
 
+type DeletedSnapshot = {
+  id: string;
+  created_at: string;
+  rows: PerformanceRow[];
+  truncated: boolean;
+};
+
 type RangePreset = "day" | "week" | "month" | "custom" | "all";
 
 const OUTCOMES = ["tp1", "tp2", "tp3", "be", "sl"] as const;
@@ -78,6 +86,8 @@ const MODES = ["scalping", "intraday"] as const;
 const TYPES = ["buy", "sell"] as const;
 const ALL_FETCH_BATCH = 1000;
 const MAX_ALL_FETCH_ROWS = 50000;
+const MAX_DELETED_SNAPSHOTS = 20;
+const DELETED_SNAPSHOTS_STORAGE_KEY = "hq-performance-deleted-snapshots-v1";
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -109,10 +119,36 @@ function toCsv(rows: PerformanceRow[]) {
     .join("\n");
 }
 
+function readDeletedSnapshotsCache(): DeletedSnapshot[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(DELETED_SNAPSHOTS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const record = item as Record<string, unknown>;
+        const id = typeof record.id === "string" ? record.id : "";
+        const createdAt = typeof record.created_at === "string" ? record.created_at : "";
+        const rows = Array.isArray(record.rows) ? (record.rows as PerformanceRow[]) : [];
+        const truncated = record.truncated === true;
+        if (!id || !createdAt || rows.length === 0) return null;
+        return { id, created_at: createdAt, rows, truncated } satisfies DeletedSnapshot;
+      })
+      .filter((item): item is DeletedSnapshot => item !== null)
+      .slice(0, MAX_DELETED_SNAPSHOTS);
+  } catch {
+    return [];
+  }
+}
+
 export default function PerformanceEditorPanel() {
   const [rows, setRows] = useState<PerformanceRow[]>([]);
   const [totalRows, setTotalRows] = useState(0);
   const [auditRows, setAuditRows] = useState<AuditRow[]>([]);
+  const [deletedSnapshots, setDeletedSnapshots] = useState<DeletedSnapshot[]>(() => readDeletedSnapshotsCache());
   const [drafts, setDrafts] = useState<Record<string, DraftRow>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -131,6 +167,7 @@ export default function PerformanceEditorPanel() {
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [restoringSnapshotId, setRestoringSnapshotId] = useState<string | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkApplying, setBulkApplying] = useState(false);
   const [bulkMode, setBulkMode] = useState<string>("keep");
@@ -196,6 +233,29 @@ export default function PerformanceEditorPanel() {
     return () => {
       alive = false;
     };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        DELETED_SNAPSHOTS_STORAGE_KEY,
+        JSON.stringify(deletedSnapshots.slice(0, MAX_DELETED_SNAPSHOTS)),
+      );
+    } catch {
+      // ignore localStorage write errors
+    }
+  }, [deletedSnapshots]);
+
+  const pushDeletedSnapshot = useCallback((rowsToRestore: PerformanceRow[], truncated: boolean) => {
+    if (!rowsToRestore.length) return;
+    const nextSnapshot: DeletedSnapshot = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      created_at: new Date().toISOString(),
+      rows: rowsToRestore,
+      truncated,
+    };
+    setDeletedSnapshots((prev) => [nextSnapshot, ...prev].slice(0, MAX_DELETED_SNAPSHOTS));
   }, []);
 
   const ensureDraft = useCallback((row: PerformanceRow) => {
@@ -426,10 +486,19 @@ export default function PerformanceEditorPanel() {
           propagateAllBrands,
         }),
       });
-      const json = (await response.json()) as { ok: boolean; error?: string; deleted?: number };
+      const json = (await response.json()) as {
+        ok: boolean;
+        error?: string;
+        deleted?: number;
+        deletedRows?: PerformanceRow[];
+        restoreRowsTruncated?: boolean;
+      };
       if (!response.ok || !json.ok) {
         setError(json.error ?? "Failed deleting performance log.");
         return;
+      }
+      if (Array.isArray(json.deletedRows) && json.deletedRows.length > 0) {
+        pushDeletedSnapshot(json.deletedRows, json.restoreRowsTruncated === true);
       }
       setMessage(
         propagateAllBrands
@@ -461,10 +530,19 @@ export default function PerformanceEditorPanel() {
           propagateAllBrands: unifiedAllBrands,
         }),
       });
-      const json = (await response.json()) as { ok: boolean; error?: string; deleted?: number };
+      const json = (await response.json()) as {
+        ok: boolean;
+        error?: string;
+        deleted?: number;
+        deletedRows?: PerformanceRow[];
+        restoreRowsTruncated?: boolean;
+      };
       if (!response.ok || !json.ok) {
         setError(json.error ?? "Failed deleting selected rows.");
         return;
+      }
+      if (Array.isArray(json.deletedRows) && json.deletedRows.length > 0) {
+        pushDeletedSnapshot(json.deletedRows, json.restoreRowsTruncated === true);
       }
       setMessage(
         unifiedAllBrands
@@ -478,6 +556,47 @@ export default function PerformanceEditorPanel() {
       setError(deleteError instanceof Error ? deleteError.message : "Failed deleting selected rows.");
     } finally {
       setBulkDeleting(false);
+    }
+  }
+
+  async function restoreDeletedSnapshot(snapshot: DeletedSnapshot) {
+    if (!snapshot.rows.length) return;
+    if (!window.confirm(`Restore ${snapshot.rows.length} deleted performance row(s)?`)) return;
+    setRestoringSnapshotId(snapshot.id);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/hq/performance", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          restoreRows: snapshot.rows,
+          reason: "Restored from HQ Recently Deleted panel",
+        }),
+      });
+      const json = (await response.json()) as {
+        ok: boolean;
+        error?: string;
+        restored?: number;
+        inserted?: number;
+        updated?: number;
+        skipped?: number;
+        failed?: number;
+      };
+      if (!response.ok || !json.ok) {
+        setError(json.error ?? "Failed restoring deleted performance rows.");
+        return;
+      }
+      setDeletedSnapshots((prev) => prev.filter((item) => item.id !== snapshot.id));
+      setMessage(
+        `Restored ${json.restored ?? 0} rows (inserted ${json.inserted ?? 0}, updated ${json.updated ?? 0}, skipped ${json.skipped ?? 0}, failed ${json.failed ?? 0}).`,
+      );
+      await loadRows();
+      if (showAuditTimeline) await loadAuditRows();
+    } catch (restoreError) {
+      setError(restoreError instanceof Error ? restoreError.message : "Failed restoring deleted performance rows.");
+    } finally {
+      setRestoringSnapshotId(null);
     }
   }
 
@@ -764,6 +883,51 @@ export default function PerformanceEditorPanel() {
             if (file) void importCsvFile(file);
           }}
         />
+      </div>
+
+      <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-black uppercase tracking-[0.08em] text-amber-800">Recently Deleted (Restore)</p>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => setDeletedSnapshots([])}
+            disabled={!deletedSnapshots.length}
+          >
+            Clear List
+          </button>
+        </div>
+        {deletedSnapshots.length === 0 ? (
+          <p className="text-xs font-semibold text-amber-700">No deleted snapshots yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {deletedSnapshots.slice(0, 5).map((snapshot) => {
+              const brandList = Array.from(new Set(snapshot.rows.map((row) => row.brand_id))).join(", ");
+              return (
+                <div key={snapshot.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-300 bg-white px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-black text-slate-800">
+                      {snapshot.rows.length} row(s) • {brandList || "unknown brand"}
+                    </p>
+                    <p className="text-[11px] font-semibold text-slate-500">
+                      Deleted at {formatDate(snapshot.created_at)}
+                      {snapshot.truncated ? " (snapshot truncated)" : ""}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => void restoreDeletedSnapshot(snapshot)}
+                    disabled={restoringSnapshotId === snapshot.id || !editorEnabled}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    {restoringSnapshotId === snapshot.id ? "Restoring..." : `Restore (${snapshot.rows.length})`}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
