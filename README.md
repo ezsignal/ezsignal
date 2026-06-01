@@ -1,5 +1,7 @@
 # EZ SIGNAL HQ
 
+![CI](https://github.com/ezsignal/ezsignal/actions/workflows/ci.yml/badge.svg)
+
 Central operations dashboard for the EZ SIGNAL ecosystem.
 
 ![EZ SIGNAL HQ Dashboard](docs/images/hq-dashboard.png)
