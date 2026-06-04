@@ -28,6 +28,7 @@ type UpdatePerformanceBody = {
   logId?: string;
   brandId?: string;
   propagateAllBrands?: boolean;
+  replaceTargetBrandBeforeImport?: boolean;
   outcome?: string;
   mode?: string;
   points?: number | string | null;
@@ -495,6 +496,7 @@ async function importPerformanceCsv(
   csv: string,
   fallbackBrandId: BrandId | null,
   propagateAllBrands = false,
+  replaceTargetBrandBeforeImport = false,
 ) {
   const lines = csv.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (lines.length < 2) {
@@ -594,6 +596,40 @@ async function importPerformanceCsv(
   }
   const finalImportRows = Array.from(dedupedImportMap.values());
   const csvDuplicatesCollapsed = importRows.length - finalImportRows.length;
+
+  let replacedLogs = 0;
+  let replacedAudits = 0;
+
+  if (replaceTargetBrandBeforeImport) {
+    if (propagateAllBrands) {
+      return { ok: false as const, status: 400, error: "Replace target brand before import requires sync all brands off." };
+    }
+
+    const targetBrandId = fallbackBrandId;
+    if (!targetBrandId) {
+      return { ok: false as const, status: 400, error: "Replace target brand before import requires a selected brand." };
+    }
+
+    const { data: deletedAudits, error: deleteAuditsError } = await supabase
+      .from("performance_log_edits")
+      .delete()
+      .eq("brand_id", targetBrandId)
+      .select("id");
+    if (deleteAuditsError) {
+      return { ok: false as const, status: 500, error: deleteAuditsError.message };
+    }
+    replacedAudits = (deletedAudits ?? []).length;
+
+    const { data: deletedLogs, error: deleteLogsError } = await supabase
+      .from("performance_logs")
+      .delete()
+      .eq("brand_id", targetBrandId)
+      .select("id");
+    if (deleteLogsError) {
+      return { ok: false as const, status: 500, error: deleteLogsError.message };
+    }
+    replacedLogs = (deletedLogs ?? []).length;
+  }
 
   const uniqueBrands = Array.from(new Set(finalImportRows.map((row) => row.brandId)));
   const minIso = finalImportRows.reduce((acc, row) => (row.createdAtIso < acc ? row.createdAtIso : acc), finalImportRows[0].createdAtIso);
@@ -746,6 +782,9 @@ async function importPerformanceCsv(
     imported: finalImportRows.length,
     sourceRows: parsed.length,
     propagatedAllBrands: propagateAllBrands,
+    replacedTargetBrand: replaceTargetBrandBeforeImport && !propagateAllBrands ? fallbackBrandId : null,
+    replacedLogs,
+    replacedAudits,
     csvDuplicatesCollapsed,
     dbDuplicatesPruned,
     updated,
@@ -869,7 +908,13 @@ export async function POST(request: Request) {
 
   if (typeof body.csv === "string" && body.csv.trim().length > 0) {
     const fallbackBrandId = normalizeBrandId(body.brandId);
-    const imported = await importPerformanceCsv(supabase, body.csv, fallbackBrandId, body.propagateAllBrands === true);
+    const imported = await importPerformanceCsv(
+      supabase,
+      body.csv,
+      fallbackBrandId,
+      body.propagateAllBrands === true,
+      body.replaceTargetBrandBeforeImport === true,
+    );
     if (!imported.ok) {
       return NextResponse.json({ ok: false, error: imported.error, skipped: imported.skipped ?? 0 }, { status: imported.status });
     }

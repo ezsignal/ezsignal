@@ -1,10 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BrandId } from "@/lib/registry";
+import { loadBrandPerformanceSettingsMap } from "@/lib/hqBrandPerformanceSettings";
 
 const GOLD_PIPS_MULTIPLIER = 10;
 const SIGNAL_DUPLICATE_COOLDOWN_SECONDS = Number(process.env.SIGNAL_DUPLICATE_COOLDOWN_SECONDS ?? "90");
-const BE_REVERSAL_PIPS = Number(process.env.BE_REVERSAL_PIPS ?? "20");
-const SL_MAX_PROGRESS_PIPS = Number(process.env.SL_MAX_PROGRESS_PIPS ?? "10");
+
 const BRAND_PRICE_DISTANCE_MULTIPLIER: Partial<Record<BrandId, number>> = {
   richjoker: 0.5,
   shinobi: 0.5,
@@ -14,6 +14,12 @@ type WebhookEvent = "signal" | "price_update" | "signal_closed";
 type SignalMode = "scalping" | "intraday";
 type SignalType = "buy" | "sell";
 type SignalOutcome = "tp1" | "tp2" | "tp3" | "be" | "sl";
+
+type PerformanceSettings = {
+  bePercentage: number;
+  scalpingPeakPips: number;
+  intradayPeakPips: number;
+};
 
 type SignalSnapshot = {
   id: string;
@@ -203,6 +209,7 @@ function inferHitOutcome(args: {
 
 function classifyCycleOutcome(args: {
   type: SignalType;
+  mode: SignalMode;
   entryTarget: number;
   closePrice: number;
   sl: number;
@@ -210,7 +217,9 @@ function classifyCycleOutcome(args: {
   tp2: number;
   tp3: number | null;
   peakPips: number;
+  performanceSettings: PerformanceSettings;
 }): SignalOutcome {
+  const peakThreshold = args.mode === "intraday" ? args.performanceSettings.intradayPeakPips : args.performanceSettings.scalpingPeakPips;
   const immediateHit = inferHitOutcome({
     type: args.type,
     livePrice: args.closePrice,
@@ -225,8 +234,7 @@ function classifyCycleOutcome(args: {
   }
 
   if (immediateHit === "sl") {
-    if (args.peakPips <= SL_MAX_PROGRESS_PIPS) return "sl";
-    if (args.peakPips < BE_REVERSAL_PIPS) return "be";
+    if (args.peakPips <= peakThreshold) return "sl";
     return "be";
   }
 
@@ -235,14 +243,17 @@ function classifyCycleOutcome(args: {
       ? (args.closePrice - args.entryTarget) * GOLD_PIPS_MULTIPLIER
       : (args.entryTarget - args.closePrice) * GOLD_PIPS_MULTIPLIER;
 
-  if (args.peakPips < BE_REVERSAL_PIPS && realizedPips <= 0) return "be";
+  if (args.peakPips < peakThreshold && realizedPips <= 0) return "be";
   if (realizedPips <= 0) return "be";
   return "tp1";
 }
 
-function computeStoredNetPips(args: { outcome: SignalOutcome; realizedPips: number; peakPips: number }) {
+function computeStoredNetPips(args: { outcome: SignalOutcome; realizedPips: number; peakPips: number; bePercentage: number }) {
+  if (args.outcome === "sl") {
+    return Number((-Math.abs(args.realizedPips)).toFixed(1));
+  }
   if (args.outcome === "be") {
-    return Number(Math.max(0, args.peakPips * 0.85).toFixed(1));
+    return Number(Math.max(0, args.peakPips * (args.bePercentage / 100)).toFixed(1));
   }
   return Number(Math.max(args.realizedPips, args.peakPips).toFixed(1));
 }
@@ -523,6 +534,7 @@ async function archivePreviousActiveSignal(args: {
   brandId: BrandId;
   pair: string;
   mode: SignalMode;
+  performanceSettings: PerformanceSettings;
 }) {
   const { supabase, brandId, pair, mode } = args;
   const previousRes = await findActiveSignal(supabase, brandId, pair, mode);
@@ -536,6 +548,8 @@ async function archivePreviousActiveSignal(args: {
   const realizedPips = points * GOLD_PIPS_MULTIPLIER;
   const peakPips = Math.max(previous.max_floating_pips ?? 0, realizedPips);
   const outcome = classifyCycleOutcome({
+    mode,
+    performanceSettings,
     type: previous.type,
     entryTarget: previous.entry_target,
     closePrice,
@@ -545,7 +559,12 @@ async function archivePreviousActiveSignal(args: {
     tp3: previous.tp3,
     peakPips,
   });
-  const historyPips = computeStoredNetPips({ outcome, realizedPips, peakPips });
+  const historyPips = computeStoredNetPips({
+    bePercentage: performanceSettings.bePercentage,
+    outcome,
+    realizedPips,
+    peakPips,
+  });
 
   const { error: closeError } = await supabase
     .from("signals")
@@ -576,6 +595,7 @@ async function processPriceUpdate(args: {
   pair: string;
   mode: SignalMode;
   livePrice: number;
+  performanceSettings: PerformanceSettings;
 }): Promise<BrandResult> {
   const { supabase, brandId, pair, mode, livePrice } = args;
   const currentRes = await findActiveSignal(supabase, brandId, pair, mode);
@@ -607,6 +627,8 @@ async function processPriceUpdate(args: {
   const realizedPips = currentPips;
   const peakPips = Math.max(maxFloatingPips, realizedPips);
   const classifiedOutcome = classifyCycleOutcome({
+    mode,
+    performanceSettings,
     type: current.type,
     entryTarget: current.entry_target,
     closePrice: livePrice,
@@ -616,7 +638,12 @@ async function processPriceUpdate(args: {
     tp3: current.tp3,
     peakPips,
   });
-  const historyPips = computeStoredNetPips({ outcome: classifiedOutcome, realizedPips, peakPips });
+  const historyPips = computeStoredNetPips({
+    bePercentage: performanceSettings.bePercentage,
+    outcome: classifiedOutcome,
+    realizedPips,
+    peakPips,
+  });
 
   const { error: closeError } = await supabase
     .from("signals")
@@ -667,6 +694,7 @@ async function processSignalClosed(args: {
   mode: SignalMode;
   closePrice: number;
   outcomeRaw: SignalOutcome | null;
+  performanceSettings: PerformanceSettings;
 }): Promise<BrandResult> {
   const { supabase, brandId, pair, mode, closePrice, outcomeRaw } = args;
   const currentRes = await findActiveSignal(supabase, brandId, pair, mode);
@@ -680,6 +708,8 @@ async function processSignalClosed(args: {
   const classifiedOutcome =
     outcomeRaw ??
     classifyCycleOutcome({
+      mode,
+      performanceSettings,
       type: current.type,
       entryTarget: current.entry_target,
       closePrice,
@@ -689,7 +719,12 @@ async function processSignalClosed(args: {
       tp3: current.tp3,
       peakPips,
     });
-  const historyPips = computeStoredNetPips({ outcome: classifiedOutcome, realizedPips, peakPips });
+  const historyPips = computeStoredNetPips({
+    bePercentage: performanceSettings.bePercentage,
+    outcome: classifiedOutcome,
+    realizedPips,
+    peakPips,
+  });
 
   const { error: closeError } = await supabase
     .from("signals")
@@ -742,6 +777,7 @@ async function processSignalOpen(args: {
   tp1: number;
   tp2: number;
   tp3: number | null;
+  performanceSettings: PerformanceSettings;
 }): Promise<BrandResult> {
   const { supabase, brandId, pair, mode, type, status, entryTarget, livePrice, sl, tp1, tp2, tp3, priceDistanceMultiplier } = args;
   const scaledLevels = scaleSignalLevelsForBrand({
@@ -784,7 +820,7 @@ async function processSignalOpen(args: {
   }
 
   try {
-    await archivePreviousActiveSignal({ supabase, brandId, pair, mode });
+    await archivePreviousActiveSignal({ supabase, brandId, pair, mode, performanceSettings });
   } catch (error) {
     return {
       brandId,
@@ -804,6 +840,8 @@ async function processSignalOpen(args: {
   });
   const immediateOutcome = immediateHit
     ? classifyCycleOutcome({
+        mode,
+        performanceSettings,
         type,
         entryTarget,
         closePrice: livePrice,
@@ -847,6 +885,7 @@ async function processSignalOpen(args: {
   const realizedPips = points * GOLD_PIPS_MULTIPLIER;
   const peakPips = Math.max(0, realizedPips);
   const historyPips = computeStoredNetPips({
+    bePercentage: performanceSettings.bePercentage,
     outcome: immediateOutcome,
     realizedPips,
     peakPips,
@@ -930,6 +969,7 @@ export async function fanoutSignalToBrandsDb(input: {
   }
 
   const brandPriceDistanceMultiplierMap = await loadBrandPriceDistanceMultiplierMap(input.supabase, orderedBrands);
+  const brandPerformanceSettingsMap = await loadBrandPerformanceSettingsMap(input.supabase, orderedBrands);
 
   const results: BrandResult[] = [];
   for (const brandId of orderedBrands) {
@@ -942,6 +982,7 @@ export async function fanoutSignalToBrandsDb(input: {
             pair: parsed.pair,
             mode: parsed.mode,
             livePrice: parsed.livePrice ?? 0,
+            performanceSettings: brandPerformanceSettingsMap[brandId] ?? { bePercentage: 80, scalpingPeakPips: 10, intradayPeakPips: 50 },
           }),
         );
         continue;
@@ -956,6 +997,7 @@ export async function fanoutSignalToBrandsDb(input: {
             mode: parsed.mode,
             closePrice: parsed.closePrice ?? 0,
             outcomeRaw: parsed.outcomeRaw,
+            performanceSettings: brandPerformanceSettingsMap[brandId] ?? { bePercentage: 80, scalpingPeakPips: 10, intradayPeakPips: 50 },
           }),
         );
         continue;
@@ -976,6 +1018,7 @@ export async function fanoutSignalToBrandsDb(input: {
           tp1: parsed.tp1 ?? 0,
           tp2: parsed.tp2 ?? 0,
           tp3: parsed.tp3,
+          performanceSettings: brandPerformanceSettingsMap[brandId] ?? { bePercentage: 80, scalpingPeakPips: 10, intradayPeakPips: 50 },
         }),
       );
     } catch (error) {

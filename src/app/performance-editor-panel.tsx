@@ -176,6 +176,9 @@ export default function PerformanceEditorPanel() {
   const [importingCsv, setImportingCsv] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
   const [importSyncAllBrands, setImportSyncAllBrands] = useState(true);
+  const [importReplaceTargetBrand, setImportReplaceTargetBrand] = useState(false);
+  const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
+  const [pendingImportName, setPendingImportName] = useState<string | null>(null);
   const [showAuditTimeline, setShowAuditTimeline] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -246,6 +249,12 @@ export default function PerformanceEditorPanel() {
       // ignore localStorage write errors
     }
   }, [deletedSnapshots]);
+
+  useEffect(() => {
+    if (brandFilter === "all" || importSyncAllBrands) {
+      setImportReplaceTargetBrand(false);
+    }
+  }, [brandFilter, importSyncAllBrands]);
 
   const pushDeletedSnapshot = useCallback((rowsToRestore: PerformanceRow[], truncated: boolean) => {
     if (!rowsToRestore.length) return;
@@ -715,6 +724,7 @@ export default function PerformanceEditorPanel() {
           csv,
           brandId: brandFilter !== "all" ? brandFilter : undefined,
           propagateAllBrands: importSyncAllBrands,
+          replaceTargetBrandBeforeImport: brandFilter !== "all" && !importSyncAllBrands && importReplaceTargetBrand,
         }),
       });
       const json = (await response.json()) as {
@@ -723,6 +733,9 @@ export default function PerformanceEditorPanel() {
         sourceRows?: number;
         imported?: number;
         propagatedAllBrands?: boolean;
+        replacedTargetBrand?: string | null;
+        replacedLogs?: number;
+        replacedAudits?: number;
         csvDuplicatesCollapsed?: number;
         dbDuplicatesPruned?: number;
         updated?: number;
@@ -734,17 +747,41 @@ export default function PerformanceEditorPanel() {
         setError(json.error ?? "Failed importing CSV.");
         return;
       }
+      const replaceSummary = json.replacedTargetBrand
+        ? `, Replaced ${json.replacedTargetBrand}: logs ${json.replacedLogs ?? 0}, audits ${json.replacedAudits ?? 0}`
+        : "";
       setMessage(
-        `Import done${json.propagatedAllBrands ? " (sync all brands)" : ""}. SourceRows: ${json.sourceRows ?? 0}, Imported: ${json.imported ?? 0}, CSV dedupe: ${json.csvDuplicatesCollapsed ?? 0}, DB pruned: ${json.dbDuplicatesPruned ?? 0}, Updated: ${json.updated ?? 0}, Inserted: ${json.inserted ?? 0}, Skipped: ${json.skipped ?? 0}, AuditErrors: ${json.auditErrors ?? 0}.`,
+        `Import done${json.propagatedAllBrands ? " (sync all brands)" : ""}${replaceSummary}. SourceRows: ${json.sourceRows ?? 0}, Imported: ${json.imported ?? 0}, CSV dedupe: ${json.csvDuplicatesCollapsed ?? 0}, DB pruned: ${json.dbDuplicatesPruned ?? 0}, Updated: ${json.updated ?? 0}, Inserted: ${json.inserted ?? 0}, Skipped: ${json.skipped ?? 0}, AuditErrors: ${json.auditErrors ?? 0}.`,
       );
       await loadRows();
       if (showAuditTimeline) await loadAuditRows();
+      setPendingImportFile(null);
+      setPendingImportName(null);
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : "Failed importing CSV.");
     } finally {
       setImportingCsv(false);
       if (csvInputRef.current) csvInputRef.current.value = "";
     }
+  }
+
+  function chooseImportFile() {
+    csvInputRef.current?.click();
+  }
+
+  async function confirmPendingImport() {
+    if (!pendingImportFile) {
+      setError("Pilih CSV dulu sebelum confirm.");
+      return;
+    }
+    await importCsvFile(pendingImportFile);
+  }
+
+  function cancelPendingImport() {
+    setPendingImportFile(null);
+    setPendingImportName(null);
+    setMessage("Import dibatalkan.");
+    if (csvInputRef.current) csvInputRef.current.value = "";
   }
 
   const brandOptions = useMemo(
@@ -860,9 +897,9 @@ export default function PerformanceEditorPanel() {
           <Download className="h-4 w-4" />
           {exportingCsv ? "Exporting..." : "Export CSV"}
         </button>
-        <button type="button" className="text-button" onClick={() => csvInputRef.current?.click()} disabled={importingCsv || !editorEnabled}>
+        <button type="button" className="text-button" onClick={chooseImportFile} disabled={importingCsv || !editorEnabled}>
           <Upload className="h-4 w-4" />
-          {importingCsv ? "Importing..." : "Import CSV"}
+          {importingCsv ? "Importing..." : "Select CSV"}
         </button>
         <label className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-bold text-slate-700">
           <input
@@ -873,6 +910,16 @@ export default function PerformanceEditorPanel() {
           />
           Sync all brands on import
         </label>
+        <label className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-bold text-slate-700">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-slate-900"
+            checked={importReplaceTargetBrand}
+            onChange={(event) => setImportReplaceTargetBrand(event.target.checked)}
+            disabled={importingCsv || brandFilter === "all" || importSyncAllBrands}
+          />
+          Replace target brand before import
+        </label>
         <input
           ref={csvInputRef}
           type="file"
@@ -880,10 +927,25 @@ export default function PerformanceEditorPanel() {
           className="hidden"
           onChange={(event) => {
             const file = event.target.files?.[0];
-            if (file) void importCsvFile(file);
+            if (!file) return;
+            setPendingImportFile(file);
+            setPendingImportName(file.name);
+            setMessage(`CSV selected: ${file.name}. Confirm to apply.`);
           }}
         />
       </div>
+
+      {pendingImportFile ? (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
+          <span>Ready to import: {pendingImportName ?? pendingImportFile.name}</span>
+          <button type="button" className="text-button primary-button" onClick={() => void confirmPendingImport()} disabled={importingCsv || !editorEnabled}>
+            {importingCsv ? "Importing..." : "Confirm Import"}
+          </button>
+          <button type="button" className="text-button" onClick={cancelPendingImport} disabled={importingCsv}>
+            Cancel
+          </button>
+        </div>
+      ) : null}
 
       <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -1218,3 +1280,5 @@ export default function PerformanceEditorPanel() {
     </section>
   );
 }
+
+

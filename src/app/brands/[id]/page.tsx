@@ -16,6 +16,7 @@ import {
 import { brands, getBrand, parityBoard } from "@/lib/registry";
 import { getHqOverviewSnapshot } from "@/lib/hqOverview";
 import SignalScalingCard from "./signal-scaling-card";
+import SignalPerformanceCard from "./performance-settings-card";
 import TelegramSettingsCard from "./telegram-settings-card";
 
 export const dynamic = "force-dynamic";
@@ -162,9 +163,10 @@ export default async function BrandPage({
           </div>
         </section>
 
-        <section className="mt-4 grid gap-4 xl:grid-cols-2">
+        <section className="mt-4 grid gap-4 xl:grid-cols-3">
           <TelegramSettingsCard brandId={brand.id} />
           <SignalScalingCard brandId={brand.id} />
+          <SignalPerformanceCard brandId={brand.id} />
         </section>
       </div>
     </main>
