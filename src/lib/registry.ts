@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type BrandId = "kafra" | "sarjan" | "richjoker" | "shinobi" | "kapitan";
+export type BrandId = "kafra" | "sarjan" | "richjoker" | "shinobi" | "kapitan" | "liza";
 
 export type BrandStatus = "core" | "synced" | "watch" | "draft";
 
@@ -169,6 +169,27 @@ export const brands: BrandRegistryItem[] = [
     telegramStatus: "Ready",
     lastDeploy: "today",
   },
+  {
+    id: "liza",
+    displayName: "LIZA FX ACADEMY",
+    canonicalName: "LIZA FX ACADEMY",
+    role: "White label",
+    domain: "liza.ezos.my",
+    github: "lizafx/lizafx",
+    vercelProject: "(TBC)",
+    localFolder: "LIZA",
+    supabaseGroup: "EZ SIGNAL HQ (shared)",
+    accent: "#f9a8d4",
+    status: "draft",
+    parity: 0,
+    activeUsers: 0,
+    expiredUsers: 0,
+    keysIssued: 0,
+    signalsToday: 0,
+    revenueEstimate: "USD 0",
+    telegramStatus: "Pending",
+    lastDeploy: "—",
+  },
 ];
 
 export const hqModules: HqModule[] = [
@@ -251,6 +272,11 @@ export const parityBoard: Record<BrandId, BrandParityCheck[]> = {
     { id: "access-ui", label: "Access UI parity", status: "pass", note: "Access, dashboard, and landing theme aligned" },
     { id: "package-links", label: "Package Links flow", status: "pass", note: "Create/edit/toggle link flow aligned with shared API" },
     { id: "admin-header", label: "Admin header flow", status: "pass", note: "Signal, refresh, logout aligned" },
+  ],
+  liza: [
+    { id: "access-ui", label: "Access UI parity", status: "todo", note: "Scaffolded from KAFRA; light/pink reskin pending" },
+    { id: "package-links", label: "Package Links flow", status: "todo", note: "Inherited from KAFRA; not verified for LIZA yet" },
+    { id: "admin-header", label: "Admin header flow", status: "todo", note: "Inherited from KAFRA; not verified for LIZA yet" },
   ],
 };
 

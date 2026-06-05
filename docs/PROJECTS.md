@@ -1,13 +1,15 @@
 # EZ SIGNAL Project Map
 
-This file is a working registry for the four EZ SIGNAL distributions.
+This file is a working registry for the six EZ SIGNAL distributions.
 
 | Display Brand | Canonical Brand | Local Folder | Role | GitHub | Vercel | Domain | Supabase |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| KAFRA SIGNAL | KAFRA SIGNAL | KAFRA SIGNAL | Core | kafrasignal/kafrasignal | kafrasignal | signal.kafra.ai | Supabase account A |
-| SARJAN SIGNAL | SARJAN SIGNAL | SARJAN SIGNAL | White label | sarjansignal/sarjansignal | sarjansignal | sarjansignal.ezos.my | Supabase account A |
-| RICH JOKER | RICH JOKER INDI | RICH JOKER INDI | White label | richjokerindi/richjokerindi | richjoker | richjoker.ezos.my | Supabase account B |
-| SHINOBI | SHINOBI INDI | SHINOBI INDI | White label | shinobiindi/shinobiindi | shinobi | shinobi.ezos.my | Supabase account B |
+| KAFRA SIGNAL | KAFRA SIGNAL | KAFRA SIGNAL | Core | kafrasignal/kafrasignal | kafrasignal | signal.kafra.ai | EZ SIGNAL HQ (shared) |
+| SARJAN SIGNAL | SARJAN SIGNAL | SARJAN SIGNAL | White label | sarjansignal/sarjansignal | sarjansignal | sarjansignal.ezos.my | EZ SIGNAL HQ (shared) |
+| RICH JOKER | RICH JOKER INDI | RICH JOKER INDI | White label | richjokerindi/richjokerindi | richjoker | richjoker.ezos.my | EZ SIGNAL HQ (shared) |
+| SHINOBI | SHINOBI INDI | SHINOBI INDI | White label | shinobiindi/shinobiindi | shinobi | shinobi.ezos.my | EZ SIGNAL HQ (shared) |
+| KAPITAN SIGNAL | KAPITAN SIGNAL | KAPITAN SIGNAL | White label | kapitansignal/kapitansignal | kapitansignal | kapitansignal.ezos.my | EZ SIGNAL HQ (shared) |
+| LIZA FX ACADEMY | LIZA FX ACADEMY | LIZA | White label | lizafx/lizafx | (TBC) | liza.ezos.my | EZ SIGNAL HQ (shared) |
 
 ## HQ Rules
 
@@ -23,8 +25,10 @@ This file is a working registry for the four EZ SIGNAL distributions.
 - Draft schema: `supabase/shared-schema.draft.sql`
 - Data migration playbook: `supabase/shared-data-migration.playbook.sql`
 - Data migration runbook: `docs/SHARED_DATA_MIGRATION_RUNBOOK.md`
-- Current decision: one shared Supabase project is acceptable only after public brand apps stop relying on broad anon table access.
-- Current progress: access key login/session checks now run through server API routes in all four brand apps.
+- Brand isolation RLS (Option A, JWT-claim): `supabase/brand-isolation-rls.sql` — requires each brand app to mint a signed JWT carrying a `brand_id` claim before running.
+- Current state: all five brands already run on a single shared Supabase project (`EZ SIGNAL HQ`, AWS ap-southeast-1, project ref `eprxfpcuhzyoyqhbgisn`). There is no per-brand Supabase project.
+- Outstanding hardening: shared project still needs `brand_id` isolation enforced and public brand apps must stop relying on broad anon table access.
+- Current progress: access key login/session checks now run through server API routes in all five brand apps.
 
 ## EZ SIGNAL HQ MVP Status
 

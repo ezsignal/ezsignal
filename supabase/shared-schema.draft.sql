@@ -637,7 +637,8 @@ values
   ('sarjan', 'SARJAN SIGNAL', 'SARJAN SIGNAL', 'sarjansignal.ezos.my', 'sarjansignal/sarjansignal', 'sarjansignal', 'SARJAN SIGNAL', 'white_label'),
   ('kapitan', 'KAPITAN SIGNAL', 'KAPITAN SIGNAL', 'kapitansignal.ezos.my', 'kapitansignal/kapitansignal', 'kapitansignal', 'KAPITAN SIGNAL', 'white_label'),
   ('richjoker', 'RICH JOKER', 'RICH JOKER INDI', 'richjoker.ezos.my', 'richjokerindi/richjokerindi', 'richjoker', 'RICH JOKER INDI', 'white_label'),
-  ('shinobi', 'SHINOBI', 'SHINOBI INDI', 'shinobi.ezos.my', 'shinobiindi/shinobiindi', 'shinobi', 'SHINOBI INDI', 'white_label')
+  ('shinobi', 'SHINOBI', 'SHINOBI INDI', 'shinobi.ezos.my', 'shinobiindi/shinobiindi', 'shinobi', 'SHINOBI INDI', 'white_label'),
+  ('liza', 'LIZA FX ACADEMY', 'LIZA FX ACADEMY', 'liza.ezos.my', 'lizafx/lizafx', 'lizafx', 'LIZA', 'white_label')
 on conflict (id) do update set
   display_name = excluded.display_name,
   canonical_name = excluded.canonical_name,

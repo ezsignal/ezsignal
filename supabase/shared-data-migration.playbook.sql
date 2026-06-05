@@ -21,7 +21,8 @@ values
   ('sarjan', 'SARJAN SIGNAL', 'SARJAN SIGNAL', 'sarjansignal.ezos.my', 'sarjansignal/sarjansignal', 'sarjansignal', 'SARJAN SIGNAL', 'white_label'),
   ('kapitan', 'KAPITAN SIGNAL', 'KAPITAN SIGNAL', 'kapitansignal.ezos.my', 'kapitansignal/kapitansignal', 'kapitansignal', 'KAPITAN SIGNAL', 'white_label'),
   ('richjoker', 'RICH JOKER', 'RICH JOKER INDI', 'richjoker.ezos.my', 'richjokerindi/richjokerindi', 'richjoker', 'RICH JOKER INDI', 'white_label'),
-  ('shinobi', 'SHINOBI', 'SHINOBI INDI', 'shinobi.ezos.my', 'shinobiindi/shinobiindi', 'shinobi', 'SHINOBI INDI', 'white_label')
+  ('shinobi', 'SHINOBI', 'SHINOBI INDI', 'shinobi.ezos.my', 'shinobiindi/shinobiindi', 'shinobi', 'SHINOBI INDI', 'white_label'),
+  ('liza', 'LIZA FX ACADEMY', 'LIZA FX ACADEMY', 'liza.ezos.my', 'lizafx/lizafx', 'lizafx', 'LIZA', 'white_label')
 on conflict (id) do update set
   display_name = excluded.display_name,
   canonical_name = excluded.canonical_name,
@@ -339,7 +340,7 @@ $$;
 -- A) counts by brand
 create or replace view hq_migration.brand_tally as
 with base as (
-  select id as brand_id from public.brands where id in ('kafra', 'sarjan', 'kapitan', 'richjoker', 'shinobi')
+  select id as brand_id from public.brands where id in ('kafra', 'sarjan', 'kapitan', 'richjoker', 'shinobi', 'liza')
 )
 select
   b.brand_id,
@@ -358,19 +359,19 @@ order by b.brand_id;
 create or replace view hq_migration.unknown_brand_rows as
 select 'subscribers' as table_name, count(*) as unknown_rows
 from public.subscribers
-where brand_id not in ('kafra', 'sarjan', 'kapitan', 'richjoker', 'shinobi')
+where brand_id not in ('kafra', 'sarjan', 'kapitan', 'richjoker', 'shinobi', 'liza')
 union all
 select 'access_keys' as table_name, count(*) as unknown_rows
 from public.access_keys
-where brand_id not in ('kafra', 'sarjan', 'kapitan', 'richjoker', 'shinobi')
+where brand_id not in ('kafra', 'sarjan', 'kapitan', 'richjoker', 'shinobi', 'liza')
 union all
 select 'signals' as table_name, count(*) as unknown_rows
 from public.signals
-where brand_id not in ('kafra', 'sarjan', 'kapitan', 'richjoker', 'shinobi')
+where brand_id not in ('kafra', 'sarjan', 'kapitan', 'richjoker', 'shinobi', 'liza')
 union all
 select 'performance_logs' as table_name, count(*) as unknown_rows
 from public.performance_logs
-where brand_id not in ('kafra', 'sarjan', 'kapitan', 'richjoker', 'shinobi');
+where brand_id not in ('kafra', 'sarjan', 'kapitan', 'richjoker', 'shinobi', 'liza');
 
 -- Example calls after CSV imports:
 -- select hq_migration.clear_stage('kafra');

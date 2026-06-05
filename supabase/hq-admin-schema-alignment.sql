@@ -80,7 +80,7 @@ create or replace view hq_migration.brand_tally as
 with base as (
   select id as brand_id
   from public.brands
-  where id in ('kafra', 'sarjan', 'richjoker', 'shinobi', 'kapitan')
+  where id in ('kafra', 'sarjan', 'richjoker', 'shinobi', 'kapitan', 'liza')
 )
 select
   b.brand_id,
