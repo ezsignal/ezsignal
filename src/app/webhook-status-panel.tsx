@@ -37,6 +37,20 @@ type StatusResponse = {
     status: string;
     payload?: Record<string, unknown>;
     errorMessage?: string | null;
+    dbFanout?: {
+      ok?: boolean;
+      processed?: number;
+      skipped?: number;
+      duplicates?: number;
+      failed?: number;
+      totalBrands?: number;
+      results?: Array<{
+        brandId?: string;
+        status?: string;
+        reason?: string;
+        event?: string;
+      }>;
+    } | null;
     receivedAt: string;
   }>;
   recentJobs: Array<{
@@ -227,6 +241,39 @@ export default function WebhookStatusPanel() {
     () => (data?.recentJobs ?? []).filter((row) => row.status === "failed" || row.status === "dead_letter"),
     [data],
   );
+
+  const ingressJobCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const job of data?.recentJobs ?? []) {
+      if (!job.ingressId) continue;
+      counts.set(job.ingressId, (counts.get(job.ingressId) ?? 0) + 1);
+    }
+    return counts;
+  }, [data]);
+
+  const getIngressPayloadMeta = useCallback((payload?: Record<string, unknown>) => {
+    if (!payload || typeof payload !== "object") return null;
+    const event = typeof payload.event === "string" ? payload.event : null;
+    const mode = typeof payload.mode === "string" ? payload.mode : null;
+    const brands = Array.isArray(payload.brands)
+      ? payload.brands.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      : [];
+    return { event, mode, brands };
+  }, []);
+
+  const formatDbFanoutSummary = (row: NonNullable<StatusResponse["recentIngress"]>[number]) => {
+    const fanout = row.dbFanout;
+    if (!fanout) return null;
+    const parts = [
+      fanout.ok ? "ok" : "failed",
+      `processed:${fanout.processed ?? 0}`,
+      `skipped:${fanout.skipped ?? 0}`,
+      `dup:${fanout.duplicates ?? 0}`,
+      `failed:${fanout.failed ?? 0}`,
+      `brands:${fanout.totalBrands ?? 0}`,
+    ];
+    return parts.join(" | ");
+  };
 
   const runOperation = useCallback(
     async (path: string, successMessage: string) => {
@@ -476,6 +523,23 @@ export default function WebhookStatusPanel() {
                 <p className="text-[11px] font-bold text-slate-500">
                   {row.provider} | {row.status} | {timeShort(row.receivedAt)}
                 </p>
+                <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                  ingress: <span className="mono">{row.id.slice(0, 12)}...</span> | jobs: {ingressJobCounts.get(row.id) ?? 0}
+                </p>
+                {getIngressPayloadMeta(row.payload) ? (
+                  <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                    meta:{" "}
+                    <span className="mono">
+                      {getIngressPayloadMeta(row.payload)?.event ?? "-"} | {getIngressPayloadMeta(row.payload)?.mode ?? "-"} | targets:
+                      {getIngressPayloadMeta(row.payload)?.brands.length ?? 0}
+                    </span>
+                  </p>
+                ) : null}
+                {row.dbFanout ? (
+                  <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                    db fanout: <span className="mono">{formatDbFanoutSummary(row)}</span>
+                  </p>
+                ) : null}
                 {row.errorMessage ? <p className="mt-1 text-[11px] font-bold text-rose-600">{row.errorMessage}</p> : null}
               </div>
             ))}

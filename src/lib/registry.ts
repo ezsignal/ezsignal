@@ -153,7 +153,7 @@ export const brands: BrandRegistryItem[] = [
     displayName: "KAPITAN SIGNAL",
     canonicalName: "KAPITAN SIGNAL",
     role: "White label",
-    domain: "kapitan.ezos.my",
+    domain: "kapitansignal.ezos.my",
     github: "kapitansignal/kapitansignal",
     vercelProject: "kapitansignal",
     localFolder: "KAPITAN SIGNAL",

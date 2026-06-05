@@ -17,7 +17,7 @@ insert into public.brands (
   role
 )
 values
-  ('kapitan', 'KAPITAN SIGNAL', 'KAPITAN SIGNAL', 'kapitan.ezos.my', 'kapitansignal/kapitansignal', 'kapitansignal', 'KAPITAN SIGNAL', 'white_label')
+  ('kapitan', 'KAPITAN SIGNAL', 'KAPITAN SIGNAL', 'kapitansignal.ezos.my', 'kapitansignal/kapitansignal', 'kapitansignal', 'KAPITAN SIGNAL', 'white_label')
 on conflict (id) do update set
   display_name = excluded.display_name,
   canonical_name = excluded.canonical_name,

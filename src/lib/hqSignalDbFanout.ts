@@ -82,6 +82,26 @@ export type DbFanoutResult = {
   status?: number;
 };
 
+type DbFanoutSummary = {
+  ok: boolean;
+  status?: number;
+  event?: WebhookEvent;
+  pair?: string;
+  mode?: SignalMode;
+  totalBrands: number;
+  processed: number;
+  skipped: number;
+  duplicates: number;
+  failed: number;
+  results: Array<{
+    brandId: BrandId;
+    status: BrandResult["status"];
+    event: WebhookEvent;
+    reason?: string;
+  }>;
+  error?: string;
+};
+
 function asObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value as Record<string, unknown>;
@@ -940,6 +960,29 @@ async function markIngressStatus(
     .eq("id", ingressId);
 }
 
+async function persistIngressDbFanoutSummary(
+  supabase: SupabaseClient,
+  ingressId: string | null | undefined,
+  summary: DbFanoutSummary,
+) {
+  if (!ingressId) return;
+  const { data, error } = await supabase.from("webhook_event_ingress").select("payload").eq("id", ingressId).maybeSingle();
+  if (error || !data) return;
+
+  const row = data as Record<string, unknown>;
+  const payload = asObject(row.payload);
+  const existingMeta = asObject(payload.hq_meta ?? payload.hqMeta);
+  const nextPayload = {
+    ...payload,
+    hq_meta: {
+      ...existingMeta,
+      dbFanout: summary,
+    },
+  };
+
+  await supabase.from("webhook_event_ingress").update({ payload: nextPayload }).eq("id", ingressId);
+}
+
 export async function fanoutSignalToBrandsDb(input: {
   supabase: SupabaseClient;
   payload: unknown;
@@ -955,6 +998,17 @@ export async function fanoutSignalToBrandsDb(input: {
 
   if (!parsed.ok) {
     await markIngressStatus(input.supabase, input.ingressId, "failed", parsed.error);
+    await persistIngressDbFanoutSummary(input.supabase, input.ingressId, {
+      ok: false,
+      status: parsed.status,
+      totalBrands: orderedBrands.length,
+      processed: 0,
+      skipped: 0,
+      duplicates: 0,
+      failed: orderedBrands.length,
+      results: [],
+      error: parsed.error,
+    });
     return {
       ok: false,
       totalBrands: orderedBrands.length,
@@ -1036,6 +1090,26 @@ export async function fanoutSignalToBrandsDb(input: {
   const duplicates = results.filter((row) => row.status === "duplicate").length;
   const failed = results.filter((row) => row.status === "failed").length;
   const ok = failed === 0;
+
+  await persistIngressDbFanoutSummary(input.supabase, input.ingressId, {
+    ok,
+    status: ok ? 200 : 207,
+    event: parsed.event,
+    pair: parsed.pair,
+    mode: parsed.mode,
+    totalBrands: orderedBrands.length,
+    processed,
+    skipped,
+    duplicates,
+    failed,
+    results: results.map((row) => ({
+      brandId: row.brandId,
+      status: row.status,
+      event: row.event,
+      reason: row.reason,
+    })),
+    error: ok ? undefined : "One or more brand writes failed in HQ DB fanout",
+  });
 
   await markIngressStatus(
     input.supabase,

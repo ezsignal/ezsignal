@@ -12,6 +12,7 @@ type IngressEvent = {
   signatureValid: boolean;
   status: IngressStatus;
   payload: unknown;
+  dbFanout?: unknown;
   errorMessage: string | null;
   receivedAt: string;
   processedAt: string | null;
@@ -63,6 +64,12 @@ type DispatchResult = {
   body: string | null;
   error: string | null;
 };
+
+function isNoActiveSignalFoundDispatch(result: DispatchResult) {
+  if (result.status !== 404) return false;
+  const body = (result.body ?? "").toLowerCase();
+  return body.includes("no_active_signal_found");
+}
 
 const MAX_INGRESS_EVENTS = 500;
 const MAX_DISPATCH_JOBS = 2000;
@@ -152,6 +159,7 @@ function mapIngressFromDb(row: Record<string, unknown>): IngressEvent {
     signatureValid: Boolean(row.signature_valid),
     status: String(row.status ?? "received") as IngressStatus,
     payload: row.payload ?? {},
+    dbFanout: readDbFanoutSummaryFromPayload(row.payload),
     errorMessage: row.error_message ? String(row.error_message) : null,
     receivedAt: String(row.received_at ?? nowIso()),
     processedAt: row.processed_at ? String(row.processed_at) : null,
@@ -176,6 +184,14 @@ function mapDispatchJobFromDb(row: Record<string, unknown>): DispatchJob {
 function asObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value as Record<string, unknown>;
+}
+
+function readDbFanoutSummaryFromPayload(payload: unknown) {
+  const row = asObject(payload);
+  const meta = asObject(row.hq_meta ?? row.hqMeta);
+  const dbFanout = meta.dbFanout ?? row.dbFanout;
+  if (!dbFanout || typeof dbFanout !== "object" || Array.isArray(dbFanout)) return null;
+  return dbFanout as Record<string, unknown>;
 }
 
 function readString(record: Record<string, unknown>, keys: string[]) {
@@ -782,6 +798,18 @@ export async function dispatchQueuedJobs(limit = 20) {
           })
           .eq("id", job.id);
         sent += 1;
+      } else if (isNoActiveSignalFoundDispatch(dispatchResult)) {
+        await supabase
+          .from("signal_dispatch_jobs")
+          .update({
+            status: "skipped",
+            last_error: "no_active_signal_found",
+            delivered_at: nowIso(),
+            next_retry_at: null,
+            updated_at: nowIso(),
+          })
+          .eq("id", job.id);
+        skipped += 1;
       } else {
         const reachedLimit = attemptNo >= target.maxAttempts;
         await supabase
@@ -836,6 +864,11 @@ export async function dispatchQueuedJobs(limit = 20) {
       job.deliveredAt = nowIso();
       job.lastError = null;
       sent += 1;
+    } else if (isNoActiveSignalFoundDispatch(dispatchResult)) {
+      job.status = "skipped";
+      job.deliveredAt = nowIso();
+      job.lastError = "no_active_signal_found";
+      skipped += 1;
     } else if (attemptNo >= target.maxAttempts) {
       job.status = "dead_letter";
       job.lastError = dispatchResult.error;

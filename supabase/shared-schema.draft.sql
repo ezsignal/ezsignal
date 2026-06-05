@@ -635,7 +635,7 @@ insert into public.brands (
 values
   ('kafra', 'KAFRA SIGNAL', 'KAFRA SIGNAL', 'signal.kafra.ai', 'kafrasignal/kafrasignal', 'kafrasignal', 'KAFRA SIGNAL', 'core'),
   ('sarjan', 'SARJAN SIGNAL', 'SARJAN SIGNAL', 'sarjansignal.ezos.my', 'sarjansignal/sarjansignal', 'sarjansignal', 'SARJAN SIGNAL', 'white_label'),
-  ('kapitan', 'KAPITAN SIGNAL', 'KAPITAN SIGNAL', 'kapitan.ezos.my', 'kapitansignal/kapitansignal', 'kapitansignal', 'KAPITAN SIGNAL', 'white_label'),
+  ('kapitan', 'KAPITAN SIGNAL', 'KAPITAN SIGNAL', 'kapitansignal.ezos.my', 'kapitansignal/kapitansignal', 'kapitansignal', 'KAPITAN SIGNAL', 'white_label'),
   ('richjoker', 'RICH JOKER', 'RICH JOKER INDI', 'richjoker.ezos.my', 'richjokerindi/richjokerindi', 'richjoker', 'RICH JOKER INDI', 'white_label'),
   ('shinobi', 'SHINOBI', 'SHINOBI INDI', 'shinobi.ezos.my', 'shinobiindi/shinobiindi', 'shinobi', 'SHINOBI INDI', 'white_label')
 on conflict (id) do update set
