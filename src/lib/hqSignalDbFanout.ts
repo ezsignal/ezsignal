@@ -556,7 +556,7 @@ async function archivePreviousActiveSignal(args: {
   mode: SignalMode;
   performanceSettings: PerformanceSettings;
 }) {
-  const { supabase, brandId, pair, mode } = args;
+  const { supabase, brandId, pair, mode, performanceSettings } = args;
   const previousRes = await findActiveSignal(supabase, brandId, pair, mode);
   if (previousRes.error) throw new Error(previousRes.error);
   if (!previousRes.row) return null;
@@ -617,7 +617,7 @@ async function processPriceUpdate(args: {
   livePrice: number;
   performanceSettings: PerformanceSettings;
 }): Promise<BrandResult> {
-  const { supabase, brandId, pair, mode, livePrice } = args;
+  const { supabase, brandId, pair, mode, livePrice, performanceSettings } = args;
   const currentRes = await findActiveSignal(supabase, brandId, pair, mode);
   if (currentRes.error) return { brandId, event: "price_update", status: "failed", reason: currentRes.error };
   if (!currentRes.row) return { brandId, event: "price_update", status: "skipped", reason: "no_active_signal_found" };
@@ -716,7 +716,7 @@ async function processSignalClosed(args: {
   outcomeRaw: SignalOutcome | null;
   performanceSettings: PerformanceSettings;
 }): Promise<BrandResult> {
-  const { supabase, brandId, pair, mode, closePrice, outcomeRaw } = args;
+  const { supabase, brandId, pair, mode, closePrice, outcomeRaw, performanceSettings } = args;
   const currentRes = await findActiveSignal(supabase, brandId, pair, mode);
   if (currentRes.error) return { brandId, event: "signal_closed", status: "failed", reason: currentRes.error };
   if (!currentRes.row) return { brandId, event: "signal_closed", status: "skipped", reason: "no_active_signal_found" };
@@ -799,7 +799,22 @@ async function processSignalOpen(args: {
   tp3: number | null;
   performanceSettings: PerformanceSettings;
 }): Promise<BrandResult> {
-  const { supabase, brandId, pair, mode, type, status, entryTarget, livePrice, sl, tp1, tp2, tp3, priceDistanceMultiplier } = args;
+  const {
+    supabase,
+    brandId,
+    pair,
+    mode,
+    type,
+    status,
+    entryTarget,
+    livePrice,
+    sl,
+    tp1,
+    tp2,
+    tp3,
+    priceDistanceMultiplier,
+    performanceSettings,
+  } = args;
   const scaledLevels = scaleSignalLevelsForBrand({
     priceDistanceMultiplier,
     entryTarget,
