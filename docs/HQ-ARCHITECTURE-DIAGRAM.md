@@ -155,7 +155,7 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    HQ["EZ SIGNAL HQ"] -->|registry-driven, auto-include| LIZA["LIZA FX ACADEMY<br/>brand_id = liza<br/>liza.ezos.my"]
+    HQ["EZ SIGNAL HQ"] -->|registry-driven, auto-include| LIZA["LIZA FX ACADEMY<br/>brand_id = liza<br/>lizafx.ezos.my"]
     HQ --> OTHERS["5 brand lain<br/>(kafra, sarjan, kapitan, richjoker, shinobi)"]
     LIZA -->|baca| DB[("signals / performance_logs<br/>WHERE brand_id = 'liza'")]
     OTHERS --> DB
@@ -301,7 +301,7 @@ flowchart TB
     end
 
     subgraph SHARED["🗄️ EZ SIGNAL HQ (shared DB)"]
-        LZ["💋 LIZA FX ACADEMY<br/>liza.ezos.my<br/>×1.0 | parity 0% (draft)"]
+        LZ["💋 LIZA FX ACADEMY<br/>lizafx.ezos.my<br/>×1.0 | synced (live)"]
     end
 
     K -.->|baca /api/signals| KAPP["KAFRA app"]
@@ -321,6 +321,6 @@ flowchart TB
 | **KAPITAN SIGNAL** | kapitansignal.ezos.my | White label | Account A | 1.0 | `#f5c542` | synced / 100% |
 | **RICH JOKER** | richjoker.ezos.my | White label | Account B | **0.5** | `#f59e0b` | watch / 78% |
 | **SHINOBI** | shinobi.ezos.my | White label | Account B | **0.5** | `#d4af37` | synced / 88% |
-| **LIZA FX ACADEMY** | liza.ezos.my | White label | **Shared HQ** | 1.0 | `#f9a8d4` | draft / 0% |
+| **LIZA FX ACADEMY** | lizafx.ezos.my | White label | **Shared HQ** | 1.0 | `#f9a8d4` | synced / live |
 
 > **Nota price multiplier:** RICH JOKER & SHINOBI guna ×0.5 (jarak harga entry/SL/TP dikecilkan separuh) — boleh override per brand via env `HQ_BRAND_<ID>_PRICE_DISTANCE_MULTIPLIER`. Brand lain default ×1.0.

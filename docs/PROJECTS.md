@@ -9,7 +9,7 @@ This file is a working registry for the six EZ SIGNAL distributions.
 | RICH JOKER | RICH JOKER INDI | RICH JOKER INDI | White label | richjokerindi/richjokerindi | richjoker | richjoker.ezos.my | EZ SIGNAL HQ (shared) |
 | SHINOBI | SHINOBI INDI | SHINOBI INDI | White label | shinobiindi/shinobiindi | shinobi | shinobi.ezos.my | EZ SIGNAL HQ (shared) |
 | KAPITAN SIGNAL | KAPITAN SIGNAL | KAPITAN SIGNAL | White label | kapitansignal/kapitansignal | kapitansignal | kapitansignal.ezos.my | EZ SIGNAL HQ (shared) |
-| LIZA FX ACADEMY | LIZA FX ACADEMY | LIZA | White label | lizafx/lizafx | (TBC) | liza.ezos.my | EZ SIGNAL HQ (shared) |
+| LIZA FX ACADEMY | LIZA FX ACADEMY | LIZA | White label | lizafx/lizafx | lizafx | lizafx.ezos.my | EZ SIGNAL HQ (shared) |
 
 ## HQ Rules
 
