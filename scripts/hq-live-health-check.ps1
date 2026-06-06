@@ -155,7 +155,9 @@ $brandTargets = @(
   @{ name = "kafra"; env = (Join-Path $groupRoot "KAFRA SIGNAL\\.env.local"); url = "https://signal.kafra.ai/api/admin/webhook-health" },
   @{ name = "sarjan"; env = (Join-Path $groupRoot "SARJAN SIGNAL\\.env.local"); url = "https://sarjansignal.ezos.my/api/admin/webhook-health" },
   @{ name = "richjoker"; env = (Join-Path $groupRoot "RICH JOKER INDI\\.env.local"); url = "https://richjoker.ezos.my/api/admin/webhook-health" },
-  @{ name = "shinobi"; env = (Join-Path $groupRoot "SHINOBI INDI\\.env.local"); url = "https://shinobi.ezos.my/api/admin/webhook-health" }
+  @{ name = "shinobi"; env = (Join-Path $groupRoot "SHINOBI INDI\\.env.local"); url = "https://shinobi.ezos.my/api/admin/webhook-health" },
+  @{ name = "kapitan"; env = (Join-Path $groupRoot "KAPITAN SIGNAL\\.env.local"); url = "https://kapitansignal.ezos.my/api/admin/webhook-health" },
+  @{ name = "liza"; env = (Join-Path $groupRoot "LIZA\\.env.local"); url = "https://liza.ezos.my/api/admin/webhook-health" }
 )
 
 $results = @()

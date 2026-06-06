@@ -8,7 +8,7 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$WebhookSecret,
 
-  [ValidateSet("kafra", "sarjan", "richjoker", "shinobi")]
+  [ValidateSet("kafra", "sarjan", "richjoker", "shinobi", "kapitan", "liza")]
   [string]$Brand = "kafra"
 )
 

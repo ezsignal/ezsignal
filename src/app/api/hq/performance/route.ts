@@ -5,7 +5,7 @@ import type { BrandId } from "@/lib/registry";
 const ALLOWED_OUTCOMES = new Set(["tp1", "tp2", "tp3", "be", "sl"]);
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PERFORMANCE_SELECT = "id, brand_id, signal_id, pair, mode, action, outcome, points, net_pips, peak_pips, price, created_at";
-const ALL_BRAND_IDS: BrandId[] = ["kafra", "sarjan", "richjoker", "shinobi", "kapitan"];
+const ALL_BRAND_IDS: BrandId[] = ["kafra", "sarjan", "richjoker", "shinobi", "kapitan", "liza"];
 const MAX_DELETE_ROWS_RETURNED = 1000;
 const MAX_RESTORE_ROWS_PER_REQUEST = 1000;
 
@@ -112,6 +112,7 @@ function normalizeBrandId(input: string | null | undefined): BrandId | null {
   if (value === "sarjan") return "sarjan";
   if (value === "shinobi") return "shinobi";
   if (value === "kapitan") return "kapitan";
+  if (value === "liza") return "liza";
   if (value === "richjoker" || value === "richjokerindi" || value === "richjoker_indi" || value === "rich-joker" || value === "joker" || value === "rich joker") {
     return "richjoker";
   }

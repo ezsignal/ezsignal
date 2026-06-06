@@ -20,6 +20,7 @@ function normalizeBrandId(input: string | null | undefined): BrandId | null {
   if (value === "sarjan") return "sarjan";
   if (value === "shinobi") return "shinobi";
   if (value === "kapitan") return "kapitan";
+  if (value === "liza") return "liza";
   if (value === "richjoker" || value === "richjokerindi" || value === "richjoker_indi" || value === "rich-joker" || value === "joker" || value === "rich joker") {
     return "richjoker";
   }
