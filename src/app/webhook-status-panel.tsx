@@ -29,6 +29,12 @@ type StatusResponse = {
     skipped: number;
     deadLetter?: number;
   };
+  failedBreakdown?: {
+    signal: number;
+    price_update: number;
+    signal_closed: number;
+    other: number;
+  };
   recentIngress: Array<{
     id: string;
     provider: string;
@@ -97,6 +103,125 @@ function timeShort(value: string) {
   if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleTimeString("en-GB", { hour12: false, timeZone: "Asia/Kuala_Lumpur" });
 }
+
+// Terjemah gabungan flag → satu ayat keadaan sebenar enjin (apa yang BETUL-BETUL berlaku).
+function describeWebhookState(flags?: {
+  enabled?: boolean;
+  shadowMode?: boolean;
+  fanoutEnabled?: boolean;
+  dbFanoutEnabled?: boolean;
+  allowHttpFanoutWithDb?: boolean;
+}): { tone: "ok" | "warn" | "danger"; title: string; detail: string } {
+  if (!flags?.enabled) {
+    return {
+      tone: "danger",
+      title: "⛔ HQ DIMATIKAN",
+      detail: "Tiada signal diterima. SEMUA brand (termasuk LIZA) tidak menerima signal baru.",
+    };
+  }
+  if (flags.shadowMode) {
+    return {
+      tone: "warn",
+      title: "🌙 MOD SENYAP (Ujian)",
+      detail: "HQ terima signal tapi TIDAK menghantar ke mana-mana. Tiada brand menerima apa-apa.",
+    };
+  }
+  const dbActive = Boolean(flags.dbFanoutEnabled);
+  // Padan dengan logik sebenar route: HTTP hanya jalan jika DB off, atau dibenarkan serentak.
+  const httpActive = Boolean(flags.fanoutEnabled) && (!dbActive || Boolean(flags.allowHttpFanoutWithDb));
+
+  if (dbActive && httpActive) {
+    return {
+      tone: "ok",
+      title: "✅ HQ AKTIF — Kedua-dua cara",
+      detail: "Signal masuk → ditulis ke DB DAN dihantar ke pautan brand serentak (mod hybrid).",
+    };
+  }
+  if (dbActive) {
+    return {
+      tone: "ok",
+      title: "✅ HQ AKTIF — Cara Baru (DB)",
+      detail: "Signal masuk → ditulis terus ke pangkalan data setiap brand. Ini mod harian biasa.",
+    };
+  }
+  if (httpActive) {
+    return {
+      tone: "ok",
+      title: "✅ HQ AKTIF — Cara Lama (HTTP)",
+      detail: "Signal masuk → dihantar ke pautan web setiap brand (sistem lama).",
+    };
+  }
+  return {
+    tone: "danger",
+    title: "⚠️ HQ TERIMA, TAPI TAK HANTAR",
+    detail: "Signal disimpan tapi TIADA cara penghantaran aktif — brand tidak menerima signal. Pilih preset.",
+  };
+}
+
+// Preset mod webhook — satu klik tetapkan semua suis kepada gabungan selamat.
+type WebhookPreset = {
+  id: string;
+  label: string;
+  hint: string;
+  recommended?: boolean;
+  flags: Record<string, boolean>;
+};
+
+const WEBHOOK_PRESETS: WebhookPreset[] = [
+  {
+    id: "default",
+    label: "✅ Tetapan Asal (Disyorkan)",
+    hint: "Mod biasa harian: signal ditulis terus ke DB setiap brand. Paling selamat.",
+    recommended: true,
+    flags: {
+      enabled: true,
+      shadowMode: false,
+      dbFanoutEnabled: true,
+      allowHttpFanoutWithDb: false,
+      fanoutEnabled: false,
+      eagerDispatchEnabled: true,
+    },
+  },
+  {
+    id: "hybrid",
+    label: "Preset 1 — Hybrid (DB + HTTP)",
+    hint: "Hantar guna cara baru (DB) DAN cara lama (HTTP) serentak. Untuk peralihan sahaja.",
+    flags: {
+      enabled: true,
+      shadowMode: false,
+      dbFanoutEnabled: true,
+      allowHttpFanoutWithDb: true,
+      fanoutEnabled: true,
+      eagerDispatchEnabled: true,
+    },
+  },
+  {
+    id: "legacy",
+    label: "Preset 2 — Cara Lama (HTTP sahaja)",
+    hint: "Hantar ke pautan web setiap brand sahaja. Untuk sistem lama.",
+    flags: {
+      enabled: true,
+      shadowMode: false,
+      dbFanoutEnabled: false,
+      allowHttpFanoutWithDb: false,
+      fanoutEnabled: true,
+      eagerDispatchEnabled: true,
+    },
+  },
+  {
+    id: "test",
+    label: "Preset 3 — Ujian (Mod Senyap)",
+    hint: "HQ terima signal tapi TAK hantar ke mana-mana. Untuk uji tanpa kesan sebenar.",
+    flags: {
+      enabled: true,
+      shadowMode: true,
+      dbFanoutEnabled: false,
+      allowHttpFanoutWithDb: false,
+      fanoutEnabled: false,
+      eagerDispatchEnabled: false,
+    },
+  },
+];
 
 export default function WebhookStatusPanel() {
   const [data, setData] = useState<StatusResponse | null>(null);
@@ -315,6 +440,19 @@ export default function WebhookStatusPanel() {
         setActionMessage("Isi admin key dulu untuk ubah webhook controls.");
         return;
       }
+      // Amaran untuk suis bahaya yang menghentikan signal ke semua brand.
+      if (typeof window !== "undefined") {
+        if (key === "enabled" && value === false) {
+          if (!window.confirm("Matikan 'Terima Signal'? Ini akan HENTIKAN semua signal ke SEMUA brand (termasuk LIZA). Teruskan?")) {
+            return;
+          }
+        }
+        if (key === "shadowMode" && value === true) {
+          if (!window.confirm("Hidupkan 'Mod Senyap'? HQ akan terima signal tapi TIDAK menghantar ke mana-mana brand. Teruskan?")) {
+            return;
+          }
+        }
+      }
       setSavingFlags(true);
       try {
         const response = await fetch("/api/hq/webhook-flags", {
@@ -341,6 +479,39 @@ export default function WebhookStatusPanel() {
     [adminKey, loadStatus],
   );
 
+  const applyPreset = useCallback(
+    async (preset: WebhookPreset) => {
+      const token = adminKey.trim();
+      if (!token) {
+        setActionMessage("Isi admin key dulu untuk guna preset.");
+        return;
+      }
+      setSavingFlags(true);
+      try {
+        const response = await fetch("/api/hq/webhook-flags", {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+            "x-admin-key": token,
+          },
+          body: JSON.stringify(preset.flags),
+        });
+        const json = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+        if (!response.ok || !json.ok) {
+          setActionMessage(json.error ?? "Gagal guna preset.");
+          return;
+        }
+        setActionMessage(`Preset digunakan: ${preset.label}`);
+        await loadStatus();
+      } catch (error) {
+        setActionMessage(error instanceof Error ? error.message : "Gagal guna preset.");
+      } finally {
+        setSavingFlags(false);
+      }
+    },
+    [adminKey, loadStatus],
+  );
+
   return (
     <section id="webhook" className="mb-6 panel p-4">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -359,6 +530,11 @@ export default function WebhookStatusPanel() {
       )}
       {actionMessage && (
         <p className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-bold text-sky-700">{actionMessage}</p>
+      )}
+      {!adminKey.trim() && (
+        <p className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+          🔑 Masukkan <span className="font-black">HQ Admin Key</span> di medan bawah dulu — semua butang kawalan (Preset, Padam, Retry, suis) tidak akan berfungsi tanpa key.
+        </p>
       )}
 
       <div className="mb-4 grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto_auto] lg:items-end">
@@ -440,7 +616,27 @@ export default function WebhookStatusPanel() {
         </p>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      {(() => {
+        const state = describeWebhookState(data?.flags);
+        const toneClass =
+          state.tone === "ok"
+            ? "border-teal-400 bg-teal-500/10 text-teal-100"
+            : state.tone === "warn"
+              ? "border-amber-400 bg-amber-500/10 text-amber-100"
+              : "border-rose-500 bg-rose-500/10 text-rose-100";
+        return (
+          <div className={`mb-4 rounded-xl border-2 p-4 ${toneClass}`}>
+            <p className="text-base font-black">{state.title}</p>
+            <p className="mt-1 text-xs font-semibold opacity-90">{state.detail}</p>
+          </div>
+        );
+      })()}
+
+      <details className="mb-4">
+        <summary className="cursor-pointer text-[11px] font-black uppercase tracking-[0.08em] text-slate-400">
+          Butiran teknikal (status flag)
+        </summary>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
         <FlagBadge label="Enabled" on={Boolean(data?.flags.enabled)} />
         <FlagBadge label="Shadow" on={Boolean(data?.flags.shadowMode)} />
         <FlagBadge label="Fanout" on={Boolean(data?.flags.fanoutEnabled)} />
@@ -460,19 +656,48 @@ export default function WebhookStatusPanel() {
           <span className="status-dot" />
           DB Config: {data?.runtime?.dbConfigured ? "YES" : "NO"}
         </span>
+        </div>
+      </details>
+
+      <div className="mb-4 rounded-lg border border-slate-700 bg-slate-900/40 p-3">
+        <p className="mb-1 text-xs font-black uppercase tracking-[0.08em] text-slate-300">Tetapan Pantas (Preset)</p>
+        <p className="mb-2 text-[11px] font-semibold text-slate-400">
+          Tak pasti nak set apa? Pilih satu preset di bawah — semua suis akan ditetapkan secara automatik.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {WEBHOOK_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              disabled={savingFlags}
+              onClick={() => void applyPreset(preset)}
+              className={`rounded-lg border p-2 text-left transition disabled:opacity-50 ${
+                preset.recommended
+                  ? "border-teal-400 bg-teal-500/10 hover:bg-teal-500/20"
+                  : "border-slate-600 bg-slate-900/40 hover:bg-slate-800/60"
+              }`}
+            >
+              <span className="block text-xs font-black text-slate-100">{preset.label}</span>
+              <span className="mt-1 block text-[11px] font-semibold text-slate-400">{preset.hint}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="mb-4 rounded-lg border border-slate-700 bg-slate-900/40 p-3">
-        <p className="mb-2 text-xs font-black uppercase tracking-[0.08em] text-slate-300">Webhook Controls</p>
+        <p className="mb-1 text-xs font-black uppercase tracking-[0.08em] text-slate-300">Tetapan Manual (Lanjutan)</p>
+        <p className="mb-2 text-[11px] font-semibold text-slate-400">
+          Untuk admin berpengalaman. Biasanya tak perlu sentuh kalau dah guna preset di atas.
+        </p>
         <div className="grid gap-2 md:grid-cols-2">
           {[
-            { key: "enabled", label: "HQ Webhook Enabled", desc: "Master on/off untuk endpoint webhook HQ." },
-            { key: "shadowMode", label: "Shadow Mode", desc: "Terima payload tapi tidak menulis signal/fanout." },
-            { key: "fanoutEnabled", label: "HTTP Fanout Enabled", desc: "Benarkan queue dispatch ke webhook URL brand." },
-            { key: "dbFanoutEnabled", label: "DB Fanout Enabled", desc: "Tulis signal terus ke DB HQ per brand." },
-            { key: "allowHttpFanoutWithDb", label: "Allow HTTP with DB", desc: "Jika ON, DB fanout + HTTP fanout jalan serentak." },
-            { key: "eagerDispatchEnabled", label: "Eager Dispatch", desc: "Terus trigger queue dispatch selepas ingress masuk." },
-            { key: "performanceEditorEnabled", label: "Performance Editor", desc: "Buka akses edit performance dari panel HQ." },
+            { key: "enabled", label: "Terima Signal (Suis Induk)", desc: "Hidupkan supaya HQ boleh terima signal. Jika OFF, SEMUA brand berhenti terima." },
+            { key: "shadowMode", label: "Mod Senyap / Ujian", desc: "HQ terima signal tapi tak hantar ke mana-mana. Untuk uji tanpa kesan sebenar." },
+            { key: "dbFanoutEnabled", label: "Hantar Cara Baru (DB)", desc: "Tulis signal terus ke pangkalan data setiap brand. Cara utama — biasanya ON." },
+            { key: "fanoutEnabled", label: "Hantar Cara Lama (HTTP)", desc: "Hantar ke pautan web setiap brand. Cara lama — biasanya OFF." },
+            { key: "allowHttpFanoutWithDb", label: "Hantar Kedua-dua Cara", desc: "Guna cara baru DAN lama serentak. Biasanya OFF (elak signal berganda)." },
+            { key: "eagerDispatchEnabled", label: "Hantar Serta-merta", desc: "Hantar terus sebaik signal masuk, tanpa beratur. Biasanya ON." },
+            { key: "performanceEditorEnabled", label: "Benarkan Edit Performance", desc: "Buka kebenaran untuk edit rekod performance dari dashboard." },
           ].map((row) => {
             const current = Boolean((data?.flags as Record<string, unknown> | undefined)?.[row.key]);
             return (
@@ -492,26 +717,80 @@ export default function WebhookStatusPanel() {
           })}
         </div>
         <p className="mt-2 text-[11px] font-semibold text-slate-300">
-          Cadangan: untuk elak duplicate SL/TP scaling, guna `DB Fanout = ON` dan `Allow HTTP with DB = OFF`.
+          💡 Untuk kegunaan harian biasa, cukup tekan butang <span className="font-black text-teal-300">Tetapan Asal (Disyorkan)</span> di atas.
         </p>
       </div>
 
-      <div className="mb-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-7">
+      <div className="mb-2 grid gap-2 sm:grid-cols-3 lg:grid-cols-7">
         {[
-          ["Ingress", counts.ingress],
-          ["Queued", counts.queued],
-          ["Sending", counts.sending],
-          ["Sent", counts.sent],
-          ["Failed", counts.failed],
-          ["Skipped", counts.skipped],
-          ["Dead", counts.deadLetter ?? 0],
-        ].map(([label, value]) => (
-          <div key={String(label)} className="rounded-lg border border-slate-200 bg-white p-3">
-            <p className="text-[11px] font-black uppercase tracking-[0.08em] text-slate-500">{String(label)}</p>
-            <p className="mono mt-1 text-xl font-black text-slate-900">{String(value)}</p>
+          { label: "Ingress", note: "Signal masuk", value: counts.ingress, danger: false },
+          { label: "Queued", note: "Beratur", value: counts.queued, danger: false },
+          { label: "Sending", note: "Sedang hantar", value: counts.sending, danger: false },
+          { label: "Sent", note: "Berjaya", value: counts.sent, danger: false },
+          { label: "Failed", note: "Gagal", value: counts.failed, danger: counts.failed > 0 },
+          { label: "Skipped", note: "Dilangkau", value: counts.skipped, danger: false },
+          { label: "Dead", note: "Gagal teruk", value: counts.deadLetter ?? 0, danger: (counts.deadLetter ?? 0) > 0 },
+        ].map((stat) => (
+          <div
+            key={stat.label}
+            className={`rounded-lg border p-3 ${stat.danger ? "border-rose-400 bg-rose-50" : "border-slate-200 bg-white"}`}
+          >
+            <p className={`text-[11px] font-black uppercase tracking-[0.08em] ${stat.danger ? "text-rose-600" : "text-slate-500"}`}>
+              {stat.label}
+            </p>
+            <p className={`mono mt-1 text-xl font-black ${stat.danger ? "text-rose-700" : "text-slate-900"}`}>{stat.value}</p>
+            <p className={`text-[10px] font-bold ${stat.danger ? "text-rose-500" : "text-slate-400"}`}>{stat.note}</p>
           </div>
         ))}
       </div>
+
+      {(counts.failed > 0 || (counts.deadLetter ?? 0) > 0) ? (
+        (() => {
+          const totalBad = counts.failed + (counts.deadLetter ?? 0);
+          const bd = data?.failedBreakdown;
+          const parts: string[] = [];
+          if (bd) {
+            if (bd.signal > 0) parts.push(`${bd.signal} signal masuk`);
+            if (bd.price_update > 0) parts.push(`${bd.price_update} kemaskini harga (heartbeat)`);
+            if (bd.signal_closed > 0) parts.push(`${bd.signal_closed} tutup signal`);
+            if (bd.other > 0) parts.push(`${bd.other} lain-lain`);
+          }
+          const hasRealSignal = (bd?.signal ?? 0) > 0 || (bd?.signal_closed ?? 0) > 0;
+          return (
+            <div className="mb-4 rounded-lg border border-rose-300 bg-rose-50 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-bold text-rose-700">
+                  ⚠️ {totalBad} rekod penghantaran HTTP gagal (sampah lama — brand tetap terima melalui DB).
+                </p>
+                <button
+                  type="button"
+                  className="text-button border-rose-400 text-rose-700"
+                  disabled={actionLoading || !adminKey.trim()}
+                  title={!adminKey.trim() ? "Masukkan HQ Admin Key dulu" : undefined}
+                  onClick={() => {
+                    if (typeof window !== "undefined" &&
+                      !window.confirm(`Padam ${totalBad} rekod gagal/dead ini? Ia TIDAK menghantar apa-apa semula — cuma kemaskan dashboard. Teruskan?`)) {
+                      return;
+                    }
+                    void runOperation("/api/hq/dispatch/clear-failed", "Rekod gagal/dead telah dipadam.");
+                  }}
+                >
+                  <RotateCcw className={`h-4 w-4 ${actionLoading ? "animate-spin" : ""}`} />
+                  Padam Rekod Lama
+                </button>
+              </div>
+              {parts.length > 0 ? (
+                <p className="mt-1 text-[11px] font-semibold text-rose-600">
+                  Jenis: {parts.join(" · ")}.
+                  {hasRealSignal
+                    ? " ⚠️ Ada signal sebenar gagal — semak jika brand betul-betul terima via DB."
+                    : " Semua jenis heartbeat/harga — boleh diabaikan dengan selamat."}
+                </p>
+              ) : null}
+            </div>
+          );
+        })()
+      ) : null}
 
       <div className="grid gap-3 lg:grid-cols-2">
         <div className="rounded-lg border border-slate-200 bg-white p-3">

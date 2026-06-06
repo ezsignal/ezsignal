@@ -145,7 +145,7 @@ export async function saveBrandPerformanceSettings(brandId: BrandId, next: Omit<
 
   const { data: existing, error: readError } = await supabase
     .from("brand_publish_rules")
-    .select("webhook_enabled,fanout_enabled,routing_mode,settings")
+    .select("routing_mode,settings")
     .eq("brand_id", brandId)
     .maybeSingle();
 
@@ -170,8 +170,6 @@ export async function saveBrandPerformanceSettings(brandId: BrandId, next: Omit<
     .upsert(
       {
         brand_id: brandId,
-        webhook_enabled: existing?.webhook_enabled ?? true,
-        fanout_enabled: existing?.fanout_enabled ?? true,
         routing_mode: existing?.routing_mode ?? "direct",
         settings,
       },

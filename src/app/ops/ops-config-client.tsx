@@ -15,8 +15,6 @@ type Flags = {
 
 type DiffRow = {
   brandId: string;
-  webhookEnabled: boolean;
-  fanoutEnabled: boolean;
   routingMode: string;
   scalingMultiplier: number;
   promoCode: string | null;
@@ -156,7 +154,7 @@ export default function OpsConfigClient() {
       <section className="panel p-4">
         <h2 className="text-lg font-black text-slate-950">Brand Diff Checker</h2>
         <p className="mt-1 text-xs font-bold text-slate-500">
-          Compare scaling, routing, fanout and promo state across brands.
+          Compare scaling, routing and promo state across brands.
         </p>
         <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <table className="data-table">
@@ -164,8 +162,6 @@ export default function OpsConfigClient() {
               <tr>
                 <th>Brand</th>
                 <th>Scaling</th>
-                <th>Webhook</th>
-                <th>Fanout</th>
                 <th>Routing</th>
                 <th>Promo</th>
                 <th>Updated (MYT)</th>
@@ -179,8 +175,6 @@ export default function OpsConfigClient() {
                   <tr key={row.brandId}>
                     <td className="mono">{row.brandId}</td>
                     <td className={mismatch ? "text-amber-700" : ""}>{row.scalingMultiplier}</td>
-                    <td>{row.webhookEnabled ? "ON" : "OFF"}</td>
-                    <td>{row.fanoutEnabled ? "ON" : "OFF"}</td>
                     <td>{row.routingMode}</td>
                     <td>{row.promoCode ? `${row.promoCode} (${row.promoActive ? "active" : "inactive"})` : "-"}</td>
                     <td>{row.updatedAt ? new Date(row.updatedAt).toLocaleString("en-GB", { hour12: false, timeZone: "Asia/Kuala_Lumpur" }) : "-"}</td>

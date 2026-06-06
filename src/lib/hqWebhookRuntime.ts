@@ -41,8 +41,6 @@ type RoutingMode = "direct" | "transform";
 
 type BrandPublishRule = {
   brandId: BrandId;
-  webhookEnabled: boolean;
-  fanoutEnabled: boolean;
   routingMode: RoutingMode;
   settings: Record<string, unknown>;
 };
@@ -293,7 +291,7 @@ async function loadBrandPublishRule(brandId: BrandId): Promise<BrandPublishRule 
   if (!supabase) return null;
   const { data, error } = await supabase
     .from("brand_publish_rules")
-    .select("brand_id,webhook_enabled,fanout_enabled,routing_mode,settings")
+    .select("brand_id,routing_mode,settings")
     .eq("brand_id", brandId)
     .limit(1)
     .maybeSingle();
@@ -306,8 +304,6 @@ async function loadBrandPublishRule(brandId: BrandId): Promise<BrandPublishRule 
 
   return {
     brandId,
-    webhookEnabled: Boolean(row.webhook_enabled ?? true),
-    fanoutEnabled: Boolean(row.fanout_enabled ?? false),
     routingMode,
     settings,
   };
@@ -350,14 +346,8 @@ async function resolveDispatchTarget(brandId: BrandId): Promise<{ target: Dispat
     return { target: envTarget, skipReason: null };
   }
 
-  if (!rule.webhookEnabled) {
-    return { target: null, skipReason: "Brand webhook disabled in publish rules." };
-  }
-
-  if (!rule.fanoutEnabled) {
-    return { target: null, skipReason: "Brand fanout disabled in publish rules." };
-  }
-
+  // Per-brand webhook_enabled/fanout_enabled flags are deprecated (Option B):
+  // fan-out is controlled by the global runtime flags + the brand registry, not per-brand DB toggles.
   const settings = rule.settings;
   const endpoint = normalizeEndpoint(
     readString(settings, ["endpoint_url", "webhook_url", "target_url", "url"]) ?? envTarget.endpoint,
@@ -885,10 +875,23 @@ export async function dispatchQueuedJobs(limit = 20) {
   return { attempted: queued.length, sent, failed, skipped, deadLetter, backend: "memory" as RuntimeBackend };
 }
 
+function summarizeFailedByEvent(rows: Array<{ signal_payload?: unknown; payload?: unknown }>) {
+  const breakdown = { signal: 0, price_update: 0, signal_closed: 0, other: 0 };
+  for (const row of rows) {
+    const payload = asObject(row.signal_payload ?? row.payload);
+    const event = String(payload.event ?? "").trim().toLowerCase();
+    if (event === "signal") breakdown.signal += 1;
+    else if (event === "price_update") breakdown.price_update += 1;
+    else if (event === "signal_closed") breakdown.signal_closed += 1;
+    else breakdown.other += 1;
+  }
+  return breakdown;
+}
+
 export async function listDispatchStatus() {
   const supabase = getSupabaseClient();
   if (supabase) {
-    const [ingressCountRes, jobsRes, ingressRes, recentJobsRes] = await Promise.all([
+    const [ingressCountRes, jobsRes, ingressRes, recentJobsRes, failedPayloadRes] = await Promise.all([
       supabase.from("webhook_event_ingress").select("id", { count: "exact", head: true }),
       supabase.from("signal_dispatch_jobs").select("status"),
       supabase
@@ -901,6 +904,11 @@ export async function listDispatchStatus() {
         .select("id, ingress_id, brand_id, status, attempts, last_error, signal_payload, created_at, updated_at, delivered_at")
         .order("created_at", { ascending: false })
         .limit(20),
+      supabase
+        .from("signal_dispatch_jobs")
+        .select("signal_payload")
+        .in("status", ["failed", "dead_letter"])
+        .limit(1000),
     ]);
 
     const ingressCount = ingressCountRes.count ?? 0;
@@ -915,6 +923,10 @@ export async function listDispatchStatus() {
       deadLetter: allStatuses.filter((status) => status === "dead_letter").length,
     };
 
+    const failedBreakdown = summarizeFailedByEvent(
+      !failedPayloadRes.error && failedPayloadRes.data ? (failedPayloadRes.data as Array<Record<string, unknown>>) : [],
+    );
+
     const recentIngress = !ingressRes.error && ingressRes.data
       ? (ingressRes.data as Array<Record<string, unknown>>).map(mapIngressFromDb)
       : [];
@@ -925,6 +937,7 @@ export async function listDispatchStatus() {
     return {
       backend: "database" as RuntimeBackend,
       counts,
+      failedBreakdown,
       recentIngress,
       recentJobs,
     };
@@ -940,9 +953,16 @@ export async function listDispatchStatus() {
     deadLetter: dispatchJobs.filter((job) => job.status === "dead_letter").length,
   };
 
+  const failedBreakdown = summarizeFailedByEvent(
+    dispatchJobs
+      .filter((job) => job.status === "failed" || job.status === "dead_letter")
+      .map((job) => ({ signal_payload: job.payload })),
+  );
+
   return {
     backend: "memory" as RuntimeBackend,
     counts,
+    failedBreakdown,
     recentIngress: [...ingressEvents].slice(-10).reverse(),
     recentJobs: [...dispatchJobs].slice(-20).reverse(),
   };

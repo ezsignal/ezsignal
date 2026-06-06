@@ -17,13 +17,20 @@ export const metadata: Metadata = {
   description: "Central operations dashboard for EZ SIGNAL brands.",
 };
 
+// Pasang tema SEBELUM paint pertama supaya tiada "flash" light→dark.
+// Default = dark bila tiada pilihan disimpan.
+const themeInitScript = `(function(){try{var m=localStorage.getItem('hq-theme-mode');if(m!=='light'){document.documentElement.classList.add('dark');}}catch(e){document.documentElement.classList.add('dark');}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${jakarta.variable} ${mono.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${jakarta.variable} ${mono.variable}`}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body>{children}</body>
     </html>
   );

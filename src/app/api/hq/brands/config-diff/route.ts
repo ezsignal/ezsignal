@@ -31,7 +31,7 @@ export async function GET() {
   const [rulesRes, promoRes] = await Promise.all([
     supabase
       .from("brand_publish_rules")
-      .select("brand_id,webhook_enabled,fanout_enabled,routing_mode,settings,updated_at")
+      .select("brand_id,routing_mode,settings,updated_at")
       .in("brand_id", targetBrandIds),
     supabase
       .from("promo_settings")
@@ -60,8 +60,6 @@ export async function GET() {
     const promo = promoMap.get(brandId);
     return {
       brandId,
-      webhookEnabled: Boolean(rule?.webhook_enabled ?? true),
-      fanoutEnabled: Boolean(rule?.fanout_enabled ?? false),
       routingMode: String(rule?.routing_mode ?? "direct"),
       scalingMultiplier: readScaling(rule?.settings),
       promoCode: String(promo?.promo_code ?? "").trim() || null,

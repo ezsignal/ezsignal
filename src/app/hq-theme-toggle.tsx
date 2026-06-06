@@ -14,11 +14,12 @@ function applyTheme(next: ThemeMode) {
 }
 
 export default function HqThemeToggle() {
-  const [theme, setTheme] = useState<ThemeMode>("light");
+  const [theme, setTheme] = useState<ThemeMode>("dark");
 
   useEffect(() => {
     const saved = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
-    const initial: ThemeMode = saved === "dark" ? "dark" : "light";
+    // Default = dark; hanya light jika pengguna pernah pilih light.
+    const initial: ThemeMode = saved === "light" ? "light" : "dark";
     setTheme(initial);
     applyTheme(initial);
   }, []);
