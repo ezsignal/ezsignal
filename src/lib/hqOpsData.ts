@@ -1,6 +1,7 @@
 import "server-only";
 import { brands, type BrandId } from "@/lib/registry";
 import { getHqSupabaseServiceClient } from "@/lib/hqWebhookRuntime";
+import { getHqRevenuePricing } from "@/lib/hqRevenuePricing";
 
 type FilterValue = string | number | boolean;
 type FilterDefinition =
@@ -370,31 +371,17 @@ export async function loadSecurityPageData(input: {
 }
 
 // Estimated revenue from real data: each confirmed redemption's duration maps to
-// a paid tier price (USD) in promo_settings — the same amounts edited from HQ.
-// Tiers follow billing: <=7d -> 7-day, <=15d -> 15-day, else 30-day. Durations
-// under 7 days are free trials (no revenue). List-price estimate — exact
-// promo-adjusted amounts are not persisted in the DB.
+// a USD tier price from the global HQ Package Pricing (editable in HQ). Tiers
+// follow billing: <=7d -> 7-day, <=15d -> 15-day, else 30-day. Durations under
+// 7 days are free trials (no revenue). List-price estimate — exact promo-adjusted
+// amounts are not persisted in the DB.
 export async function loadBrandRevenue() {
   const supabase = getHqSupabaseServiceClient();
   if (!supabase) {
     return { ok: false as const, error: "HQ Supabase service client is not configured." };
   }
 
-  const { data: promoRows, error: promoError } = await supabase
-    .from("promo_settings")
-    .select("brand_id, amount_7_days_usd, amount_15_days_usd, amount_30_days_usd");
-  if (promoError) {
-    return { ok: false as const, error: promoError.message };
-  }
-
-  const priceByBrand = new Map<string, { d7: number; d15: number; d30: number }>();
-  for (const row of promoRows ?? []) {
-    priceByBrand.set(String(row.brand_id), {
-      d7: Number(row.amount_7_days_usd ?? 0),
-      d15: Number(row.amount_15_days_usd ?? 0),
-      d30: Number(row.amount_30_days_usd ?? 0),
-    });
-  }
+  const pricing = await getHqRevenuePricing(supabase);
 
   const usdByBrand = new Map<string, number>();
   const BATCH = 1000;
@@ -413,11 +400,9 @@ export async function loadBrandRevenue() {
     const batch = rows ?? [];
     for (const row of batch) {
       const brandId = String(row.brand_id);
-      const price = priceByBrand.get(brandId);
-      if (!price) continue;
       const meta = (row.metadata ?? {}) as Record<string, unknown>;
       const days = Number(meta.duration_days ?? 0);
-      const usd = days < 7 ? 0 : days <= 7 ? price.d7 : days <= 15 ? price.d15 : price.d30;
+      const usd = days < 7 ? 0 : days <= 7 ? pricing.usd7 : days <= 15 ? pricing.usd15 : pricing.usd30;
       if (usd > 0) {
         usdByBrand.set(brandId, (usdByBrand.get(brandId) ?? 0) + usd);
       }

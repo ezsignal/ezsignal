@@ -5,6 +5,7 @@ import { StatusBadge } from "@/app/hq-ui";
 import { brands, systemLanes, totals } from "@/lib/registry";
 import { getHqOverviewSnapshot } from "@/lib/hqOverview";
 import { loadBrandRevenue } from "@/lib/hqOpsData";
+import RevenuePricingCard from "./revenue-pricing-card";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -155,6 +156,10 @@ export default async function BrandsPage() {
             </span>
           </div>
         </div>
+      </section>
+
+      <section className="mb-6">
+        <RevenuePricingCard />
       </section>
     </HqShell>
   );
