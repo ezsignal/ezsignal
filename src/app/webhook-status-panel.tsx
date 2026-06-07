@@ -793,7 +793,7 @@ export default function WebhookStatusPanel() {
       ) : null}
 
       <div className="grid gap-3 lg:grid-cols-2">
-        <div className="rounded-lg border border-slate-200 bg-white p-3">
+        <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
           <p className="mb-2 text-xs font-black uppercase tracking-[0.08em] text-slate-500">Recent Ingress</p>
           <div className="space-y-2">
             {(data?.recentIngress ?? []).slice(0, 5).map((row) => (
@@ -826,7 +826,7 @@ export default function WebhookStatusPanel() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-3">
+        <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
           <p className="mb-2 text-xs font-black uppercase tracking-[0.08em] text-slate-500">Recent Jobs</p>
           <div className="space-y-2">
             {(data?.recentJobs ?? []).slice(0, 5).map((row) => (

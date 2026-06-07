@@ -64,32 +64,30 @@ export default function AccessKeysTable({ rows }: { rows: AccessKeyRow[] }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1">
-            <span className="text-[11px] font-black uppercase tracking-wide text-slate-400">Status</span>
+          <select
+            value={status}
+            onChange={(event) => setStatus(event.target.value as StatusFilter)}
+            className="hq-filter-select"
+            aria-label="Filter by status"
+          >
             {STATUS_FILTERS.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => setStatus(item.key)}
-                className={`text-button ${status === item.key ? "primary-button" : ""}`}
-              >
-                {item.label}
-              </button>
+              <option key={item.key} value={item.key}>
+                {item.key === "all" ? "All status" : item.label}
+              </option>
             ))}
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[11px] font-black uppercase tracking-wide text-slate-400">Date</span>
+          </select>
+          <select
+            value={dateRange}
+            onChange={(event) => setDateRange(event.target.value as DateRange)}
+            className="hq-filter-select"
+            aria-label="Filter by date"
+          >
             {DATE_RANGES.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => setDateRange(item.key)}
-                className={`text-button ${dateRange === item.key ? "primary-button" : ""}`}
-              >
-                {item.label}
-              </button>
+              <option key={item.key} value={item.key}>
+                {item.key === "all" ? "All dates" : item.label}
+              </option>
             ))}
-          </div>
+          </select>
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input

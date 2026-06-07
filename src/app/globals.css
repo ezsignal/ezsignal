@@ -94,6 +94,18 @@ html.dark .sidebar {
   display: none;
 }
 
+/* Compact, theme-aware filter dropdown for ops tables */
+.hq-filter-select {
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-soft);
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
 .panel {
   border: 1px solid var(--line);
   border-radius: 8px;
