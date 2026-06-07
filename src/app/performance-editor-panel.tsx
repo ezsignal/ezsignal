@@ -1180,15 +1180,41 @@ export default function PerformanceEditorPanel() {
                           </button>
                         </>
                       )}
-                      <button
-                        type="button"
-                        className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-black text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-                        onClick={() => void deleteRow(row, unifiedAllBrands)}
-                        disabled={deletingId === row.id || savingId === row.id || !editorEnabled}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        {deletingId === row.id ? "Deleting..." : "Delete"}
-                      </button>
+                      {unifiedAllBrands ? (
+                        <button
+                          type="button"
+                          className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-black text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={() => void deleteRow(row, true)}
+                          disabled={deletingId === row.id || savingId === row.id || !editorEnabled}
+                          title="Delete this row across all brands"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          {deletingId === row.id ? "Deleting..." : "Delete"}
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-black text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => void deleteRow(row, false)}
+                            disabled={deletingId === row.id || savingId === row.id || !editorEnabled}
+                            title="Delete only this brand's row"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            {deletingId === row.id ? "Deleting..." : "Delete"}
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-md border border-rose-300 bg-rose-100 px-2 py-1 text-xs font-black text-rose-800 hover:bg-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => void deleteRow(row, true)}
+                            disabled={deletingId === row.id || savingId === row.id || !editorEnabled}
+                            title="Delete this row across all brands"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Delete All
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

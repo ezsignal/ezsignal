@@ -443,55 +443,6 @@ async function resolvePropagationRows(
   return Array.from(resolved.values());
 }
 
-function getModeBucketWindowMs(mode: string) {
-  return mode === "intraday" ? 4 * 60 * 60 * 1000 : 30 * 60 * 1000;
-}
-
-function getBucketBoundsIso(createdAtRaw: string, modeRaw: string) {
-  const createdAtMs = new Date(createdAtRaw).getTime();
-  if (!Number.isFinite(createdAtMs)) return null;
-  const intervalMs = getModeBucketWindowMs(modeRaw);
-  const bucketStartMs = Math.floor(createdAtMs / intervalMs) * intervalMs;
-  const bucketEndMs = bucketStartMs + intervalMs;
-  return {
-    fromIso: new Date(bucketStartMs).toISOString(),
-    toIso: new Date(bucketEndMs).toISOString(),
-  };
-}
-
-async function resolvePropagationClusterRows(
-  supabase: NonNullable<ReturnType<typeof getHqSupabaseServiceClient>>,
-  seedRows: Array<Record<string, unknown>>,
-) {
-  const resolved = new Map<string, Record<string, unknown>>();
-  for (const row of seedRows) {
-    resolved.set(String(row.id), row);
-    const sourcePair = typeof row.pair === "string" && row.pair.trim().length > 0 ? row.pair : "XAUUSD";
-    const sourceMode = row.mode === "intraday" ? "intraday" : "scalping";
-    const sourceType = row.action === "sell" ? "sell" : "buy";
-
-    const bounds = getBucketBoundsIso(String(row.created_at), sourceMode);
-    if (!bounds) continue;
-
-    const { data: candidateRows, error } = await supabase
-      .from("performance_logs")
-      .select(PERFORMANCE_SELECT)
-      .eq("pair", sourcePair)
-      .eq("mode", sourceMode)
-      .eq("action", sourceType)
-      .gte("created_at", bounds.fromIso)
-      .lt("created_at", bounds.toIso)
-      .limit(5000);
-    if (error) throw new Error(error.message);
-
-    for (const candidate of (candidateRows ?? []) as Array<Record<string, unknown>>) {
-      resolved.set(String(candidate.id), candidate);
-    }
-  }
-
-  return Array.from(resolved.values());
-}
-
 async function importPerformanceCsv(
   supabase: NonNullable<ReturnType<typeof getHqSupabaseServiceClient>>,
   csv: string,
@@ -1449,7 +1400,7 @@ export async function DELETE(request: Request) {
     let targetRows = seedRows;
     if (propagateAllBrands) {
       try {
-        targetRows = await resolvePropagationClusterRows(supabase, seedRows);
+        targetRows = await resolvePropagationRows(supabase, seedRows);
       } catch (resolveError) {
         const message = resolveError instanceof Error ? resolveError.message : "Failed resolving propagation targets.";
         return NextResponse.json({ ok: false, error: message }, { status: 500 });
@@ -1518,7 +1469,7 @@ export async function DELETE(request: Request) {
   let targetRows: Array<Record<string, unknown>> = [existing as Record<string, unknown>];
   if (propagateAllBrands) {
     try {
-      targetRows = await resolvePropagationClusterRows(supabase, [existing as Record<string, unknown>]);
+      targetRows = await resolvePropagationRows(supabase, [existing as Record<string, unknown>]);
     } catch (resolveError) {
       const message = resolveError instanceof Error ? resolveError.message : "Failed resolving propagation targets.";
       return NextResponse.json({ ok: false, error: message }, { status: 500 });
