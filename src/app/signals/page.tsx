@@ -4,15 +4,10 @@ import HqShell from "@/app/hq-shell";
 import { MetricCard } from "@/app/hq-ui";
 import { brands } from "@/lib/registry";
 import { loadSignalsPageData } from "@/lib/hqOpsData";
+import SignalsTable from "./signals-table";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-function dateText(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("en-GB", { hour12: false, timeZone: "Asia/Kuala_Lumpur" });
-}
 
 function brandHref(brandId: string | null) {
   if (!brandId) return "/signals";
@@ -72,53 +67,7 @@ export default async function SignalsPage({
             <MetricCard label="Sell" value={String(sellCount)} icon={TrendingUp} />
           </section>
 
-          <section className="panel p-4">
-            <div className="mb-4">
-              <h2 className="text-lg font-black text-slate-950">Recent Signals</h2>
-              <p className="text-xs font-bold text-slate-500">
-                Showing latest {data.rows.length} rows.
-              </p>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Brand</th>
-                    <th>Pair</th>
-                    <th>Action</th>
-                    <th>Entry</th>
-                    <th>SL</th>
-                    <th>TP1</th>
-                    <th>Status</th>
-                    <th>Created (MYT)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.rows.map((row) => (
-                    <tr key={row.id}>
-                      <td className="mono text-xs">{row.brandId}</td>
-                      <td>{row.pair}</td>
-                      <td className={row.action === "buy" ? "text-teal-700" : "text-rose-700"}>
-                        {row.action.toUpperCase()}
-                      </td>
-                      <td>{row.entry}</td>
-                      <td>{row.stopLoss ?? "-"}</td>
-                      <td>{row.takeProfit1 ?? "-"}</td>
-                      <td>{row.status}</td>
-                      <td>{dateText(row.createdAt)}</td>
-                    </tr>
-                  ))}
-                  {data.rows.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="text-center text-xs font-bold text-slate-500">
-                        No signal data yet.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          <SignalsTable rows={data.rows} />
         </>
       )}
     </HqShell>
