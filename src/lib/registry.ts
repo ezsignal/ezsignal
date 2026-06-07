@@ -240,13 +240,6 @@ export const migrationPhases: MigrationPhase[] = [
   { id: 6, title: "Migrate brand by brand and run parity checks", status: "pending", owner: "Ops" },
 ];
 
-export const nextTasks = [
-  "Apply patched SARJAN schema in its current Supabase SQL editor.",
-  "Add BRAND_ID environment variable to each brand app.",
-  "Move signal and performance reads behind brand-aware server routes.",
-  "Create HQ super admin account after shared Auth schema lands.",
-];
-
 export const parityBoard: Record<BrandId, BrandParityCheck[]> = {
   kafra: [
     { id: "access-ui", label: "Access UI parity", status: "pass", note: "Core baseline" },
@@ -308,9 +301,4 @@ export function totals() {
       signalsToday: 0,
     },
   );
-}
-
-export function migrationProgress() {
-  const done = migrationPhases.filter((phase) => phase.status === "done").length;
-  return Math.round((done / migrationPhases.length) * 100);
 }

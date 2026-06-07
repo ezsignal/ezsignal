@@ -1,17 +1,16 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, Box, Building2, CircleDashed, CircleAlert, KeyRound, RadioTower, RefreshCw, Settings2, TimerReset, UsersRound } from "lucide-react";
+import { AlertTriangle, Box, Building2, CircleAlert, KeyRound, RadioTower, RefreshCw, Settings2, TimerReset, UsersRound } from "lucide-react";
 import HqShell from "@/app/hq-shell";
 import TallyAuditPanel from "@/app/tally-audit-panel";
 import { MetricCard } from "@/app/hq-ui";
 import TradingDaySettingsCard from "@/app/trading-day-settings-card";
-import { migrationProgress, nextTasks, totals } from "@/lib/registry";
+import { totals } from "@/lib/registry";
 import { getHqOverviewSnapshot } from "@/lib/hqOverview";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const fallbackTotals = totals();
-const phasePercent = migrationProgress();
 
 export default async function Home() {
   const liveSnapshot = await getHqOverviewSnapshot({ dispatchOpsAlerts: true });
@@ -38,7 +37,7 @@ export default async function Home() {
             HQ Overview
           </h1>
           <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-600">
-            Ringkasan live untuk users, keys, signal, dan progress migrasi shared database.
+            Ringkasan live untuk users, keys, dan signal merentas semua brand.
           </p>
         </div>
         <div className="flex gap-2">
@@ -63,7 +62,7 @@ export default async function Home() {
         <MetricCard label="New Users Today" value={String(overview.newUsersToday)} icon={UsersRound} />
         <MetricCard label="Package Active" value={String(overview.activePackageTypes)} icon={Box} />
         <MetricCard label="Expiring Today" value={String(overview.expiringToday)} icon={TimerReset} />
-        <MetricCard label="Active Brands" value={`${overview.activeBrandsToday}/4`} icon={Building2} />
+        <MetricCard label="Active Brands" value={`${overview.activeBrandsToday}/6`} icon={Building2} />
       </section>
 
       <section className="mb-6 panel p-4">
@@ -178,53 +177,6 @@ export default async function Home() {
       </section>
 
       <TallyAuditPanel />
-
-      <section className="mb-6 grid gap-3 lg:grid-cols-[1fr_360px]">
-        <div className="panel p-4">
-          <div className="mb-4 flex items-center justify-between gap-2">
-            <div>
-              <h2 className="text-lg font-black text-slate-950">Execution Queue</h2>
-              <p className="text-xs font-bold text-slate-500">
-                Shared Supabase readiness tasks from HQ plan.
-              </p>
-            </div>
-            <Link href="/supabase" className="text-button">
-              SQL Plan
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-          <div className="space-y-2">
-            {nextTasks.map((task) => (
-              <div
-                key={task}
-                className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-3"
-              >
-                <CircleDashed className="mt-0.5 h-4 w-4 text-slate-400" />
-                <p className="text-sm font-bold text-slate-700">{task}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="panel p-4">
-          <h2 className="text-lg font-black text-slate-950">Migration Progress</h2>
-          <p className="mt-1 text-xs font-bold text-slate-500">
-            Shared Supabase rollout completion
-          </p>
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200">
-            <div
-              className="h-full rounded-full bg-teal-500"
-              style={{ width: `${phasePercent}%` }}
-            />
-          </div>
-          <p className="mono mt-3 text-2xl font-black text-slate-950">
-            {phasePercent}%
-          </p>
-          <p className="text-xs font-bold text-slate-500">
-            Based on completed migration phases.
-          </p>
-        </div>
-      </section>
     </HqShell>
   );
 }
