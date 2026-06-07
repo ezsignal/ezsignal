@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
+import { DATE_RANGES, inDateRange, type DateRange } from "@/lib/dateRange";
 
 type SignalRow = {
   id: string;
@@ -40,6 +41,7 @@ function dateText(value: string) {
 export default function SignalsTable({ rows }: { rows: SignalRow[] }) {
   const [status, setStatus] = useState<StatusFilter>("all");
   const [action, setAction] = useState<ActionFilter>("all");
+  const [dateRange, setDateRange] = useState<DateRange>("all");
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
@@ -47,13 +49,14 @@ export default function SignalsTable({ rows }: { rows: SignalRow[] }) {
     return rows.filter((row) => {
       if (status !== "all" && row.status !== status) return false;
       if (action !== "all" && row.action !== action) return false;
+      if (!inDateRange(row.createdAt, dateRange)) return false;
       if (q.length > 0) {
         const haystack = `${row.brandId} ${row.pair} ${row.status} ${row.action}`.toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
     });
-  }, [rows, status, action, query]);
+  }, [rows, status, action, dateRange, query]);
 
   return (
     <section className="panel p-4">
@@ -86,6 +89,19 @@ export default function SignalsTable({ rows }: { rows: SignalRow[] }) {
                 type="button"
                 onClick={() => setAction(item.key)}
                 className={`text-button ${action === item.key ? "primary-button" : ""}`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] font-black uppercase tracking-wide text-slate-400">Date</span>
+            {DATE_RANGES.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setDateRange(item.key)}
+                className={`text-button ${dateRange === item.key ? "primary-button" : ""}`}
               >
                 {item.label}
               </button>

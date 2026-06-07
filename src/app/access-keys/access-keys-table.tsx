@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
+import { DATE_RANGES, inDateRange, type DateRange } from "@/lib/dateRange";
 
 type AccessKeyRow = {
   id: string;
@@ -33,6 +34,7 @@ function dateText(value: string | null) {
 
 export default function AccessKeysTable({ rows }: { rows: AccessKeyRow[] }) {
   const [status, setStatus] = useState<StatusFilter>("all");
+  const [dateRange, setDateRange] = useState<DateRange>("all");
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
@@ -43,13 +45,14 @@ export default function AccessKeysTable({ rows }: { rows: AccessKeyRow[] }) {
       if (status === "active" && !row.isActive) return false;
       if (status === "inactive" && row.isActive) return false;
       if (status === "expired" && !expired) return false;
+      if (!inDateRange(row.createdAt, dateRange)) return false;
       if (q.length > 0) {
         const haystack = `${row.clientName ?? ""} ${row.packageName ?? ""} ${row.keyPreview} ${row.brandId}`.toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
     });
-  }, [rows, status, query]);
+  }, [rows, status, dateRange, query]);
 
   return (
     <section className="panel p-4">
@@ -60,14 +63,28 @@ export default function AccessKeysTable({ rows }: { rows: AccessKeyRow[] }) {
             Showing {filtered.length} of {rows.length} key records.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] font-black uppercase tracking-wide text-slate-400">Status</span>
             {STATUS_FILTERS.map((item) => (
               <button
                 key={item.key}
                 type="button"
                 onClick={() => setStatus(item.key)}
                 className={`text-button ${status === item.key ? "primary-button" : ""}`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] font-black uppercase tracking-wide text-slate-400">Date</span>
+            {DATE_RANGES.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setDateRange(item.key)}
+                className={`text-button ${dateRange === item.key ? "primary-button" : ""}`}
               >
                 {item.label}
               </button>
