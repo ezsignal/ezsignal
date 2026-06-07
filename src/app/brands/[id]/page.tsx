@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   Bot,
   CheckCircle2,
-  CircleAlert,
   Database,
   ExternalLink,
   GitBranch,
@@ -53,8 +52,8 @@ export default async function BrandPage({
   const flowRows = [
     ["Access key isolation", parityBoard[brand.id][0].note, KeyRound],
     ["Admin CRM scope", parityBoard[brand.id][2].note, ShieldCheck],
-    ["Signal publishing", "Server-route migration planned", RadioTower],
-    ["User analytics", "Ready from registry", UsersRound],
+    ["Signal publishing", "Brand-scoped server routes (live)", RadioTower],
+    ["User analytics", "Live from shared DB", UsersRound],
   ];
 
   return (
@@ -153,8 +152,8 @@ export default async function BrandPage({
                     </div>
                     <p className="text-sm font-black text-slate-950">{label as string}</p>
                   </div>
-                  <p className="inline-flex items-center gap-2 text-xs font-extrabold text-amber-700">
-                    <CircleAlert className="h-4 w-4" />
+                  <p className="inline-flex items-center gap-2 text-xs font-extrabold text-emerald-700">
+                    <CheckCircle2 className="h-4 w-4" />
                     {value as string}
                   </p>
                 </div>

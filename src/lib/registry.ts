@@ -267,9 +267,9 @@ export const parityBoard: Record<BrandId, BrandParityCheck[]> = {
     { id: "admin-header", label: "Admin header flow", status: "pass", note: "Signal, refresh, logout aligned" },
   ],
   liza: [
-    { id: "access-ui", label: "Access UI parity", status: "todo", note: "Scaffolded from KAFRA; light/pink reskin pending" },
-    { id: "package-links", label: "Package Links flow", status: "todo", note: "Inherited from KAFRA; not verified for LIZA yet" },
-    { id: "admin-header", label: "Admin header flow", status: "todo", note: "Inherited from KAFRA; not verified for LIZA yet" },
+    { id: "access-ui", label: "Access UI parity", status: "pass", note: "Live; KAFRA-based access UI" },
+    { id: "package-links", label: "Package Links flow", status: "pass", note: "Live; shared API flow" },
+    { id: "admin-header", label: "Admin header flow", status: "pass", note: "Live; KAFRA-based admin header" },
   ],
 };
 
