@@ -368,3 +368,69 @@ export async function loadSecurityPageData(input: {
     },
   };
 }
+
+// Estimated revenue from real data: each confirmed redemption's duration maps to
+// a paid tier price in promo_settings (MYR cents). Durations < 7 days are treated
+// as free trials (no revenue). This is a list-price estimate — the exact charged
+// amount (after promo discounts) is not persisted in the DB.
+export async function loadBrandRevenue() {
+  const supabase = getHqSupabaseServiceClient();
+  if (!supabase) {
+    return { ok: false as const, error: "HQ Supabase service client is not configured." };
+  }
+
+  const { data: promoRows, error: promoError } = await supabase
+    .from("promo_settings")
+    .select("brand_id, amount_7_days_cents, amount_15_days_cents, amount_30_days_cents");
+  if (promoError) {
+    return { ok: false as const, error: promoError.message };
+  }
+
+  const priceByBrand = new Map<string, { d7: number; d15: number; d30: number }>();
+  for (const row of promoRows ?? []) {
+    priceByBrand.set(String(row.brand_id), {
+      d7: Number(row.amount_7_days_cents ?? 0),
+      d15: Number(row.amount_15_days_cents ?? 0),
+      d30: Number(row.amount_30_days_cents ?? 0),
+    });
+  }
+
+  const centsByBrand = new Map<string, number>();
+  const BATCH = 1000;
+  const MAX_ROWS = 50000;
+  let offset = 0;
+
+  while (offset < MAX_ROWS) {
+    const { data: rows, error } = await supabase
+      .from("link_redemptions")
+      .select("brand_id, metadata")
+      .order("created_at", { ascending: false })
+      .range(offset, offset + BATCH - 1);
+    if (error) {
+      return { ok: false as const, error: error.message };
+    }
+    const batch = rows ?? [];
+    for (const row of batch) {
+      const brandId = String(row.brand_id);
+      const price = priceByBrand.get(brandId);
+      if (!price) continue;
+      const meta = (row.metadata ?? {}) as Record<string, unknown>;
+      const days = Number(meta.duration_days ?? 0);
+      const cents = days >= 30 ? price.d30 : days >= 15 ? price.d15 : days >= 7 ? price.d7 : 0;
+      if (cents > 0) {
+        centsByBrand.set(brandId, (centsByBrand.get(brandId) ?? 0) + cents);
+      }
+    }
+    if (batch.length < BATCH) break;
+    offset += BATCH;
+  }
+
+  const byBrand: Record<string, number> = {};
+  let totalCents = 0;
+  for (const [brandId, cents] of centsByBrand) {
+    byBrand[brandId] = cents;
+    totalCents += cents;
+  }
+
+  return { ok: true as const, byBrand, totalCents };
+}

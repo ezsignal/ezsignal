@@ -4,18 +4,28 @@ import HqShell from "@/app/hq-shell";
 import { StatusBadge } from "@/app/hq-ui";
 import { brands, systemLanes, totals } from "@/lib/registry";
 import { getHqOverviewSnapshot } from "@/lib/hqOverview";
+import { loadBrandRevenue } from "@/lib/hqOpsData";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const fallbackTotals = totals();
 
+function formatMyr(cents: number) {
+  return `RM ${Math.round(cents / 100).toLocaleString("en-MY")}`;
+}
+
 export default async function BrandsPage() {
   const liveSnapshot = await getHqOverviewSnapshot({ dispatchOpsAlerts: false });
   const total = liveSnapshot?.totals ?? fallbackTotals;
-  const lanes = systemLanes.map((lane) =>
-    lane.label === "Users" ? { ...lane, value: `${total.activeUsers} active` } : lane,
-  );
+  const revenue = await loadBrandRevenue();
+  const lanes = systemLanes.map((lane) => {
+    if (lane.label === "Users") return { ...lane, value: `${total.activeUsers} active` };
+    if (lane.label === "Revenue") {
+      return { ...lane, value: revenue.ok ? `~${formatMyr(revenue.totalCents)}` : "Unavailable" };
+    }
+    return lane;
+  });
 
   return (
     <HqShell>
