@@ -47,13 +47,6 @@ export type HqModule = {
 
 export type PhaseStatus = "done" | "active" | "pending";
 
-export type MigrationPhase = {
-  id: number;
-  title: string;
-  status: PhaseStatus;
-  owner: string;
-};
-
 export type CheckStatus = "pass" | "watch" | "todo";
 
 export type BrandParityCheck = {
@@ -229,15 +222,6 @@ export const hqModules: HqModule[] = [
     status: "Later",
     icon: LayoutTemplate,
   },
-];
-
-export const migrationPhases: MigrationPhase[] = [
-  { id: 1, title: "Normalize all schemas to KAFRA parity", status: "active", owner: "Schema" },
-  { id: 2, title: "Move public access/session checks to server routes", status: "done", owner: "Apps" },
-  { id: 3, title: "Add brand_id columns and backfill existing data", status: "pending", owner: "Data" },
-  { id: 4, title: "Create shared Supabase project and seed brands", status: "pending", owner: "Infra" },
-  { id: 5, title: "Shift signal/log public reads to brand-aware API", status: "pending", owner: "Apps" },
-  { id: 6, title: "Migrate brand by brand and run parity checks", status: "pending", owner: "Ops" },
 ];
 
 export const parityBoard: Record<BrandId, BrandParityCheck[]> = {
