@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type BrandId = "kafra" | "sarjan" | "richjoker" | "shinobi" | "kapitan" | "liza";
+export type BrandId = "kafra" | "sarjan" | "richjoker" | "shinobi" | "kapitan" | "liza" | "mastery";
 
 export type BrandStatus = "core" | "synced" | "watch" | "draft";
 
@@ -183,6 +183,27 @@ export const brands: BrandRegistryItem[] = [
     telegramStatus: "Pending",
     lastDeploy: "—",
   },
+  {
+    id: "mastery",
+    displayName: "MASTERY SIGNAL",
+    canonicalName: "MASTERY SIGNAL",
+    role: "White label",
+    domain: "www.masterysignal.com",
+    github: "masterysignal/masterysignal",
+    vercelProject: "masterysignal",
+    localFolder: "MASTERY SIGNAL",
+    supabaseGroup: "EZ SIGNAL HQ (shared)",
+    accent: "#1f1fd1",
+    status: "synced",
+    parity: 100,
+    activeUsers: 0,
+    expiredUsers: 0,
+    keysIssued: 0,
+    signalsToday: 0,
+    revenueEstimate: "USD 0",
+    telegramStatus: "Pending",
+    lastDeploy: "today",
+  },
 ];
 
 export const hqModules: HqModule[] = [
@@ -254,6 +275,11 @@ export const parityBoard: Record<BrandId, BrandParityCheck[]> = {
     { id: "access-ui", label: "Access UI parity", status: "pass", note: "Live; KAFRA-based access UI" },
     { id: "package-links", label: "Package Links flow", status: "pass", note: "Live; shared API flow" },
     { id: "admin-header", label: "Admin header flow", status: "pass", note: "Live; KAFRA-based admin header" },
+  ],
+  mastery: [
+    { id: "access-ui", label: "Access UI parity", status: "pass", note: "Live; KAFRA-based, electric-blue reskin" },
+    { id: "package-links", label: "Package Links flow", status: "pass", note: "Shared API flow" },
+    { id: "admin-header", label: "Admin header flow", status: "pass", note: "KAFRA-based admin header" },
   ],
 };
 
