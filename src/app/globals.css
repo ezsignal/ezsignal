@@ -87,6 +87,13 @@ html.dark .sidebar {
   padding: 24px;
 }
 
+/* Mobile nav drawer — hidden on desktop, revealed under 1120px */
+.mobile-topbar,
+.sidebar-close,
+.sidebar-backdrop {
+  display: none;
+}
+
 .panel {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -270,9 +277,53 @@ html.dark textarea {
     grid-template-columns: 1fr;
   }
 
+  .mobile-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 45;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(18px);
+  }
+
+  html.dark .mobile-topbar {
+    background: rgba(2, 6, 23, 0.9);
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 49;
+    background: rgba(2, 6, 23, 0.45);
+  }
+
   .sidebar {
-    position: static;
-    height: auto;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 50;
+    height: 100vh;
+    width: 270px;
+    max-width: 84vw;
+    overflow-y: auto;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+  }
+
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-close {
+    display: inline-flex;
+    position: absolute;
+    top: 14px;
+    right: 14px;
   }
 
   .metric-grid,

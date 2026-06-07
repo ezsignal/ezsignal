@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import HqNav from "@/app/hq-nav";
 import HqThemeToggle from "@/app/hq-theme-toggle";
 import HqLogoutButton from "@/app/hq-logout-button";
+import HqLayoutClient from "@/app/hq-layout-client";
 import { getWebhookRuntimeMeta } from "@/lib/hqWebhookRuntime";
 
 export default async function HqShell({
@@ -17,46 +18,44 @@ export default async function HqShell({
     : "HQ Supabase service role key/url missing.";
   const modeSyncedAt = new Date().toLocaleString("en-GB", { hour12: false, timeZone: "Asia/Kuala_Lumpur" });
 
-  return (
-    <div className="shell">
-      <aside className="sidebar">
-        <Link href="/" className="mb-8 flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-lg bg-slate-950 text-sm font-black text-white">
-            EZ
-          </div>
-          <div>
-            <p className="text-sm font-black tracking-[0.18em] text-slate-950">
-              SIGNAL HQ
-            </p>
-            <p className="text-xs font-bold text-slate-500">Control Center</p>
-          </div>
-        </Link>
-
-        <HqNav />
-        <div className="mt-4">
-          <HqThemeToggle />
+  const sidebar = (
+    <>
+      <Link href="/" className="mb-8 flex items-center gap-3">
+        <div className="grid h-10 w-10 place-items-center rounded-lg bg-slate-950 text-sm font-black text-white">
+          EZ
         </div>
-        <div className="mt-2">
-          <HqLogoutButton />
-        </div>
-
-        <div className="mt-8 rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
-            Mode
+        <div>
+          <p className="text-sm font-black tracking-[0.18em] text-slate-950">
+            SIGNAL HQ
           </p>
-          <p className="mt-2 text-sm font-black text-slate-950">{modeLabel}</p>
-          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-            {modeNote}
-          </p>
-          {modeSyncedAt ? (
-            <p className="mt-2 text-[11px] font-bold text-slate-500">
-              Synced (MYT): {modeSyncedAt}
-            </p>
-          ) : null}
+          <p className="text-xs font-bold text-slate-500">Control Center</p>
         </div>
-      </aside>
+      </Link>
 
-      <main className="main">{children}</main>
-    </div>
+      <HqNav />
+      <div className="mt-4">
+        <HqThemeToggle />
+      </div>
+      <div className="mt-2">
+        <HqLogoutButton />
+      </div>
+
+      <div className="mt-8 rounded-lg border border-slate-200 bg-slate-50 p-3">
+        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+          Mode
+        </p>
+        <p className="mt-2 text-sm font-black text-slate-950">{modeLabel}</p>
+        <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+          {modeNote}
+        </p>
+        {modeSyncedAt ? (
+          <p className="mt-2 text-[11px] font-bold text-slate-500">
+            Synced (MYT): {modeSyncedAt}
+          </p>
+        ) : null}
+      </div>
+    </>
   );
+
+  return <HqLayoutClient sidebar={sidebar}>{children}</HqLayoutClient>;
 }
