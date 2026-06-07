@@ -72,6 +72,7 @@ export default function SupabasePage() {
             ))}
           </div>
         </div>
+        <div className="overflow-x-auto">
         <table className="data-table">
           <thead>
             <tr>
@@ -118,6 +119,7 @@ export default function SupabasePage() {
             ))}
           </tbody>
         </table>
+        </div>
       </section>
     </HqShell>
   );

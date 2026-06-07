@@ -178,7 +178,8 @@ html.dark .primary-button {
 }
 
 .table-shell {
-  overflow: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
@@ -293,6 +294,11 @@ html.dark textarea {
   }
 
   .data-table {
-    min-width: 720px;
+    min-width: 680px;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 10px 8px;
   }
 }
