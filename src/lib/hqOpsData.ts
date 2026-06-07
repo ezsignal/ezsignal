@@ -370,9 +370,10 @@ export async function loadSecurityPageData(input: {
 }
 
 // Estimated revenue from real data: each confirmed redemption's duration maps to
-// a paid tier price in promo_settings (MYR cents). Durations < 7 days are treated
-// as free trials (no revenue). This is a list-price estimate — the exact charged
-// amount (after promo discounts) is not persisted in the DB.
+// a paid tier price (USD) in promo_settings — the same amounts edited from HQ.
+// Tiers follow billing: <=7d -> 7-day, <=15d -> 15-day, else 30-day. Durations
+// under 7 days are free trials (no revenue). List-price estimate — exact
+// promo-adjusted amounts are not persisted in the DB.
 export async function loadBrandRevenue() {
   const supabase = getHqSupabaseServiceClient();
   if (!supabase) {
@@ -381,7 +382,7 @@ export async function loadBrandRevenue() {
 
   const { data: promoRows, error: promoError } = await supabase
     .from("promo_settings")
-    .select("brand_id, amount_7_days_cents, amount_15_days_cents, amount_30_days_cents");
+    .select("brand_id, amount_7_days_usd, amount_15_days_usd, amount_30_days_usd");
   if (promoError) {
     return { ok: false as const, error: promoError.message };
   }
@@ -389,13 +390,13 @@ export async function loadBrandRevenue() {
   const priceByBrand = new Map<string, { d7: number; d15: number; d30: number }>();
   for (const row of promoRows ?? []) {
     priceByBrand.set(String(row.brand_id), {
-      d7: Number(row.amount_7_days_cents ?? 0),
-      d15: Number(row.amount_15_days_cents ?? 0),
-      d30: Number(row.amount_30_days_cents ?? 0),
+      d7: Number(row.amount_7_days_usd ?? 0),
+      d15: Number(row.amount_15_days_usd ?? 0),
+      d30: Number(row.amount_30_days_usd ?? 0),
     });
   }
 
-  const centsByBrand = new Map<string, number>();
+  const usdByBrand = new Map<string, number>();
   const BATCH = 1000;
   const MAX_ROWS = 50000;
   let offset = 0;
@@ -416,9 +417,9 @@ export async function loadBrandRevenue() {
       if (!price) continue;
       const meta = (row.metadata ?? {}) as Record<string, unknown>;
       const days = Number(meta.duration_days ?? 0);
-      const cents = days >= 30 ? price.d30 : days >= 15 ? price.d15 : days >= 7 ? price.d7 : 0;
-      if (cents > 0) {
-        centsByBrand.set(brandId, (centsByBrand.get(brandId) ?? 0) + cents);
+      const usd = days < 7 ? 0 : days <= 7 ? price.d7 : days <= 15 ? price.d15 : price.d30;
+      if (usd > 0) {
+        usdByBrand.set(brandId, (usdByBrand.get(brandId) ?? 0) + usd);
       }
     }
     if (batch.length < BATCH) break;
@@ -426,11 +427,11 @@ export async function loadBrandRevenue() {
   }
 
   const byBrand: Record<string, number> = {};
-  let totalCents = 0;
-  for (const [brandId, cents] of centsByBrand) {
-    byBrand[brandId] = cents;
-    totalCents += cents;
+  let totalUsd = 0;
+  for (const [brandId, usd] of usdByBrand) {
+    byBrand[brandId] = usd;
+    totalUsd += usd;
   }
 
-  return { ok: true as const, byBrand, totalCents };
+  return { ok: true as const, byBrand, totalUsd };
 }

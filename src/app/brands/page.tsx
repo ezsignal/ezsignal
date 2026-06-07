@@ -11,8 +11,8 @@ export const revalidate = 0;
 
 const fallbackTotals = totals();
 
-function formatMyr(cents: number) {
-  return `RM ${Math.round(cents / 100).toLocaleString("en-MY")}`;
+function formatUsd(amount: number) {
+  return `USD ${Math.round(amount).toLocaleString("en-US")}`;
 }
 
 export default async function BrandsPage() {
@@ -22,7 +22,7 @@ export default async function BrandsPage() {
   const lanes = systemLanes.map((lane) => {
     if (lane.label === "Users") return { ...lane, value: `${total.activeUsers} active` };
     if (lane.label === "Revenue") {
-      return { ...lane, value: revenue.ok ? `~${formatMyr(revenue.totalCents)}` : "Unavailable" };
+      return { ...lane, value: revenue.ok ? `~${formatUsd(revenue.totalUsd)}` : "Unavailable" };
     }
     return lane;
   });
