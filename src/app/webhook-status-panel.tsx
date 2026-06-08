@@ -231,6 +231,7 @@ export default function WebhookStatusPanel() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [adminKey, setAdminKey] = useState("");
   const [savingFlags, setSavingFlags] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [opsTgToken, setOpsTgToken] = useState("");
   const [opsTgChatId, setOpsTgChatId] = useState("");
   const [opsTgEnabled, setOpsTgEnabled] = useState(true);
@@ -468,7 +469,8 @@ export default function WebhookStatusPanel() {
           setActionMessage(json.error ?? "Failed updating webhook controls.");
           return;
         }
-        setActionMessage("Webhook controls updated.");
+        setActionMessage("✓ Tersimpan automatik.");
+        setLastSavedAt(new Date().toLocaleTimeString());
         await loadStatus();
       } catch (error) {
         setActionMessage(error instanceof Error ? error.message : "Failed updating webhook controls.");
@@ -478,6 +480,45 @@ export default function WebhookStatusPanel() {
     },
     [adminKey, loadStatus],
   );
+
+  const saveAllFlags = useCallback(async () => {
+    const token = adminKey.trim();
+    if (!token) {
+      setActionMessage("Isi admin key dulu untuk simpan tetapan.");
+      return;
+    }
+    const flags = data?.flags as Record<string, unknown> | undefined;
+    if (!flags) return;
+    setSavingFlags(true);
+    try {
+      const body = {
+        enabled: Boolean(flags.enabled),
+        shadowMode: Boolean(flags.shadowMode),
+        dbFanoutEnabled: Boolean(flags.dbFanoutEnabled),
+        fanoutEnabled: Boolean(flags.fanoutEnabled),
+        allowHttpFanoutWithDb: Boolean(flags.allowHttpFanoutWithDb),
+        eagerDispatchEnabled: Boolean(flags.eagerDispatchEnabled),
+        performanceEditorEnabled: Boolean(flags.performanceEditorEnabled),
+      };
+      const response = await fetch("/api/hq/webhook-flags", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", "x-admin-key": token },
+        body: JSON.stringify(body),
+      });
+      const json = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!response.ok || !json.ok) {
+        setActionMessage(json.error ?? "Gagal simpan tetapan.");
+        return;
+      }
+      setActionMessage("✓ Semua tetapan webhook disimpan & disahkan.");
+      setLastSavedAt(new Date().toLocaleTimeString());
+      await loadStatus();
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : "Gagal simpan tetapan.");
+    } finally {
+      setSavingFlags(false);
+    }
+  }, [adminKey, data, loadStatus]);
 
   const applyPreset = useCallback(
     async (preset: WebhookPreset) => {
@@ -691,18 +732,19 @@ export default function WebhookStatusPanel() {
         </p>
         <div className="grid gap-2 md:grid-cols-2">
           {[
-            { key: "enabled", label: "Terima Signal (Suis Induk)", desc: "Hidupkan supaya HQ boleh terima signal. Jika OFF, SEMUA brand berhenti terima." },
-            { key: "shadowMode", label: "Mod Senyap / Ujian", desc: "HQ terima signal tapi tak hantar ke mana-mana. Untuk uji tanpa kesan sebenar." },
-            { key: "dbFanoutEnabled", label: "Hantar Cara Baru (DB)", desc: "Tulis signal terus ke pangkalan data setiap brand. Cara utama — biasanya ON." },
-            { key: "fanoutEnabled", label: "Hantar Cara Lama (HTTP)", desc: "Hantar ke pautan web setiap brand. Cara lama — biasanya OFF." },
-            { key: "allowHttpFanoutWithDb", label: "Hantar Kedua-dua Cara", desc: "Guna cara baru DAN lama serentak. Biasanya OFF (elak signal berganda)." },
-            { key: "eagerDispatchEnabled", label: "Hantar Serta-merta", desc: "Hantar terus sebaik signal masuk, tanpa beratur. Biasanya ON." },
-            { key: "performanceEditorEnabled", label: "Benarkan Edit Performance", desc: "Buka kebenaran untuk edit rekod performance dari dashboard." },
+            { key: "enabled", label: "Terima Signal (Suis Utama)", desc: "Hidupkan supaya HQ boleh terima signal. Kalau OFF, SEMUA brand berhenti terima.", rec: "on" },
+            { key: "shadowMode", label: "Mod Senyap (Ujian sahaja)", desc: "HQ terima signal tapi TAK hantar ke brand. Untuk uji tanpa kesan sebenar.", rec: "off" },
+            { key: "dbFanoutEnabled", label: "Hantar ke Brand — Cara DB (UTAMA)", desc: "Tulis signal terus ke pangkalan data tiap brand. Ini cara utama harian.", rec: "on" },
+            { key: "fanoutEnabled", label: "Hantar ke Brand — Cara HTTP (LAMA)", desc: "Hantar ke webhook tiap brand. Cara lama — jarang guna sekarang.", rec: "off" },
+            { key: "allowHttpFanoutWithDb", label: "Guna DB + HTTP Serentak", desc: "Hantar guna DUA cara sekaligus. ⚠️ Boleh buat signal BERGANDA.", rec: "off" },
+            { key: "eagerDispatchEnabled", label: "Hantar Serta-merta", desc: "Hantar terus sebaik signal masuk, tanpa beratur. Lebih laju.", rec: "on" },
+            { key: "performanceEditorEnabled", label: "Benarkan Edit Performance", desc: "Boleh edit rekod performance terus dari dashboard.", rec: "any" },
           ].map((row) => {
             const current = Boolean((data?.flags as Record<string, unknown> | undefined)?.[row.key]);
+            const mismatch = (row.rec === "on" && !current) || (row.rec === "off" && current);
             return (
-              <label key={row.key} className="rounded-lg border border-slate-700 bg-slate-900/40 p-2">
-                <span className="flex items-center gap-2">
+              <label key={row.key} className={`rounded-lg border p-2 ${mismatch ? "border-amber-400/60 bg-amber-500/10" : "border-slate-700 bg-slate-900/40"}`}>
+                <span className="flex flex-wrap items-center gap-2">
                   <input
                     type="checkbox"
                     checked={current}
@@ -710,14 +752,36 @@ export default function WebhookStatusPanel() {
                     onChange={(event) => void saveFlag(row.key, event.target.checked)}
                   />
                   <span className="text-sm font-black text-slate-100">{row.label}</span>
+                  {row.rec === "on" && <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-emerald-300">Biasa: ON</span>}
+                  {row.rec === "off" && <span className="rounded-full bg-slate-600/50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-slate-200">Biasa: OFF</span>}
+                  {mismatch && <span className="text-[9px] font-black uppercase tracking-wide text-amber-300">⚠ tak ikut biasa</span>}
                 </span>
                 <span className="mt-1 block text-[11px] font-semibold text-slate-300">{row.desc}</span>
               </label>
             );
           })}
         </div>
+        {Boolean((data?.flags as Record<string, unknown> | undefined)?.dbFanoutEnabled) &&
+          Boolean((data?.flags as Record<string, unknown> | undefined)?.fanoutEnabled) && (
+            <p className="mt-2 rounded-lg border border-rose-400/60 bg-rose-500/10 px-3 py-2 text-[11px] font-bold text-rose-200">
+              ⚠️ DB dan HTTP dua-dua ON — signal mungkin BERGANDA. Matikan salah satu (biasanya HTTP = OFF).
+            </p>
+          )}
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => void saveAllFlags()}
+            disabled={savingFlags}
+            className="rounded-lg bg-teal-500 px-4 py-2 text-sm font-black text-slate-900 transition hover:bg-teal-400 disabled:opacity-50"
+          >
+            {savingFlags ? "Menyimpan…" : "💾 Simpan & Sahkan Tetapan"}
+          </button>
+          <span className="text-[11px] font-semibold text-emerald-300">
+            ✓ Tetapan disimpan AUTOMATIK setiap kali toggle{lastSavedAt ? ` · terakhir: ${lastSavedAt}` : ""}.
+          </span>
+        </div>
         <p className="mt-2 text-[11px] font-semibold text-slate-300">
-          💡 Untuk kegunaan harian biasa, cukup tekan butang <span className="font-black text-teal-300">Tetapan Asal (Disyorkan)</span> di atas.
+          💡 Untuk kegunaan harian biasa, cukup tekan butang <span className="font-black text-teal-300">Tetapan Asal (Disyorkan)</span> di atas — ia set semua suis betul automatik.
         </p>
       </div>
 
