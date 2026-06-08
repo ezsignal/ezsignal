@@ -639,7 +639,7 @@ async function processPriceUpdate(args: {
     tp3: current.tp3,
   });
 
-  if (!hitOutcome) {
+  if (!hitOutcome || hitOutcome === "tp1" || hitOutcome === "tp2") {
     const { error } = await supabase
       .from("signals")
       .update({ live_price: livePrice, max_floating_pips: maxFloatingPips, updated_at: new Date().toISOString() })
@@ -903,7 +903,7 @@ async function processSignalOpen(args: {
     tp2: scaledLevels.tp2,
     tp3: scaledLevels.tp3,
   });
-  const immediateOutcome = immediateHit
+  const immediateOutcome = (immediateHit === "tp3" || immediateHit === "sl")
     ? classifyCycleOutcome({
         mode,
         performanceSettings,
@@ -917,7 +917,7 @@ async function processSignalOpen(args: {
         peakPips: Math.max(0, (type === "buy" ? livePrice - entryTarget : entryTarget - livePrice) * GOLD_PIPS_MULTIPLIER),
       })
     : null;
-  const finalStatus = immediateHit ? "closed" : status;
+  const finalStatus = (immediateHit === "tp3" || immediateHit === "sl") ? "closed" : status;
 
   const { data, error } = await supabase
     .from("signals")
