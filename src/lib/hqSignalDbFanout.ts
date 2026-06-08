@@ -340,7 +340,7 @@ function parsePayload(payload: unknown): ParseResult {
     return { ok: false, status: 400, error: "outcome must be tp1, tp2, tp3, be or sl" };
   }
 
-  if (eventRaw === "price_update" && livePrice === null) {
+  if (eventRaw === "price_update" && (livePrice === null || livePrice <= 0)) {
     return { ok: false, status: 400, error: "live_price (or price) is required for price_update" };
   }
 
@@ -348,7 +348,7 @@ function parsePayload(payload: unknown): ParseResult {
     return { ok: false, status: 400, error: "close_price (or live_price/price) is required for signal_closed" };
   }
 
-  if (eventRaw === "signal" && (entryTarget === null || livePrice === null || sl === null || tp1 === null || tp2 === null)) {
+  if (eventRaw === "signal" && (entryTarget === null || livePrice === null || livePrice <= 0 || sl === null || tp1 === null || tp2 === null)) {
     return {
       ok: false,
       status: 400,
@@ -562,7 +562,7 @@ async function archivePreviousActiveSignal(args: {
   if (!previousRes.row) return null;
 
   const previous = previousRes.row;
-  const closePrice = previous.live_price ?? previous.entry_target;
+  const closePrice = previous.live_price && previous.live_price > 0 ? previous.live_price : previous.entry_target;
   const points =
     previous.type === "buy" ? closePrice - previous.entry_target : previous.entry_target - closePrice;
   const realizedPips = points * GOLD_PIPS_MULTIPLIER;
