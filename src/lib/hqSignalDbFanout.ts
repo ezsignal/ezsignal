@@ -557,56 +557,60 @@ async function archivePreviousActiveSignal(args: {
   performanceSettings: PerformanceSettings;
 }) {
   const { supabase, brandId, pair, mode, performanceSettings } = args;
-  const previousRes = await findActiveSignal(supabase, brandId, pair, mode);
-  if (previousRes.error) throw new Error(previousRes.error);
-  if (!previousRes.row) return null;
+  let lastResult: { signalId: string; performanceLogId: string } | null = null;
+  // Close ALL active signals for this pair+mode (handles leftover accumulation from churn),
+  // not just the newest one. Guarded against runaway loops.
+  for (let guard = 0; guard < 25; guard += 1) {
+    const previousRes = await findActiveSignal(supabase, brandId, pair, mode);
+    if (previousRes.error) throw new Error(previousRes.error);
+    if (!previousRes.row) break;
 
-  const previous = previousRes.row;
-  const closePrice = previous.live_price && previous.live_price > 0 ? previous.live_price : previous.entry_target;
-  const points =
-    previous.type === "buy" ? closePrice - previous.entry_target : previous.entry_target - closePrice;
-  const realizedPips = points * GOLD_PIPS_MULTIPLIER;
-  const peakPips = Math.max(previous.max_floating_pips ?? 0, realizedPips);
-  const outcome = classifyCycleOutcome({
-    mode,
-    performanceSettings,
-    type: previous.type,
-    entryTarget: previous.entry_target,
-    closePrice,
-    sl: previous.sl,
-    tp1: previous.tp1,
-    tp2: previous.tp2,
-    tp3: previous.tp3,
-    peakPips,
-  });
-  const historyPips = computeStoredNetPips({
-    bePercentage: performanceSettings.bePercentage,
-    outcome,
-    realizedPips,
-    peakPips,
-  });
+    const previous = previousRes.row;
+    const closePrice = previous.live_price && previous.live_price > 0 ? previous.live_price : previous.entry_target;
+    const points =
+      previous.type === "buy" ? closePrice - previous.entry_target : previous.entry_target - closePrice;
+    const realizedPips = points * GOLD_PIPS_MULTIPLIER;
+    const peakPips = Math.max(previous.max_floating_pips ?? 0, realizedPips);
+    const outcome = classifyCycleOutcome({
+      mode,
+      performanceSettings,
+      type: previous.type,
+      entryTarget: previous.entry_target,
+      closePrice,
+      sl: previous.sl,
+      tp1: previous.tp1,
+      tp2: previous.tp2,
+      tp3: previous.tp3,
+      peakPips,
+    });
+    const historyPips = computeStoredNetPips({
+      bePercentage: performanceSettings.bePercentage,
+      outcome,
+      realizedPips,
+      peakPips,
+    });
 
-  const { error: closeError } = await supabase
-    .from("signals")
-    .update({ status: "closed", updated_at: new Date().toISOString() })
-    .eq("id", previous.id);
+    const { error: closeError } = await supabase
+      .from("signals")
+      .update({ status: "closed", updated_at: new Date().toISOString() })
+      .eq("id", previous.id);
+    if (closeError) throw new Error(closeError.message);
 
-  if (closeError) throw new Error(closeError.message);
-
-  const performanceLogId = await insertPerformanceLog(supabase, {
-    brandId,
-    signalId: previous.id,
-    pair,
-    mode,
-    action: previous.type,
-    outcome,
-    points: historyPips,
-    price: closePrice,
-    netPips: historyPips,
-    peakPips,
-  });
-
-  return { signalId: previous.id, performanceLogId };
+    const performanceLogId = await insertPerformanceLog(supabase, {
+      brandId,
+      signalId: previous.id,
+      pair,
+      mode,
+      action: previous.type,
+      outcome,
+      points: historyPips,
+      price: closePrice,
+      netPips: historyPips,
+      peakPips,
+    });
+    lastResult = { signalId: previous.id, performanceLogId };
+  }
+  return lastResult;
 }
 
 async function processPriceUpdate(args: {
