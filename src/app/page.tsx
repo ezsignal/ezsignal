@@ -4,7 +4,7 @@ import HqShell from "@/app/hq-shell";
 import TallyAuditPanel from "@/app/tally-audit-panel";
 import { MetricCard } from "@/app/hq-ui";
 import TradingDaySettingsCard from "@/app/trading-day-settings-card";
-import { totals } from "@/lib/registry";
+import { brands, totals } from "@/lib/registry";
 import { getHqOverviewSnapshot } from "@/lib/hqOverview";
 
 export const dynamic = "force-dynamic";
@@ -62,7 +62,7 @@ export default async function Home() {
         <MetricCard label="New Users Today" value={String(overview.newUsersToday)} icon={UsersRound} />
         <MetricCard label="Package Active" value={String(overview.activePackageTypes)} icon={Box} />
         <MetricCard label="Expiring Today" value={String(overview.expiringToday)} icon={TimerReset} />
-        <MetricCard label="Active Brands" value={`${overview.activeBrandsToday}/6`} icon={Building2} />
+        <MetricCard label="Active Brands" value={`${overview.activeBrandsToday}/${brands.length}`} icon={Building2} />
       </section>
 
       <section className="mb-6 panel p-4">
