@@ -854,6 +854,32 @@ async function processSignalOpen(args: {
     }
   }
 
+  // 30-min slot gate: keep only ONE signal per pair+mode per bucket (slot). The source may
+  // emit many signals within a slot at different entries (price moving); keep the first
+  // confirmed one and ignore the rest until the next 30-min (or 4h) boundary.
+  const slotBounds = getModeBucketBoundsIso(mode);
+  const { data: slotDup } = await supabase
+    .from("signals")
+    .select("id")
+    .eq("brand_id", brandId)
+    .eq("pair", pair)
+    .eq("mode", mode)
+    .is("master_signal_id", null)
+    .gte("created_at", slotBounds.fromIso)
+    .lt("created_at", slotBounds.toIso)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (slotDup) {
+    return {
+      brandId,
+      event: "signal",
+      status: "duplicate",
+      signalId: String((slotDup as Record<string, unknown>).id),
+      reason: "slot_already_filled",
+    };
+  }
+
   try {
     await archivePreviousActiveSignal({ supabase, brandId, pair, mode, performanceSettings });
   } catch (error) {
