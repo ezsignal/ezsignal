@@ -922,7 +922,14 @@ async function processSignalOpen(args: {
     .select("id")
     .single();
 
-  if (error) return { brandId, event: "signal", status: "failed", reason: error.message };
+  if (error) {
+    // Unique partial index (one active signal per brand+pair+mode) lets a concurrent
+    // signal race in first; treat that as a duplicate, not a failure (race-proof slot gate).
+    if ((error as { code?: string }).code === "23505") {
+      return { brandId, event: "signal", status: "duplicate", reason: "active_signal_exists" };
+    }
+    return { brandId, event: "signal", status: "failed", reason: error.message };
+  }
   const signalId = String((data as Record<string, unknown>).id);
   if (finalStatus === "active") {
     await sendBrandWebPush(supabase, brandId, {
