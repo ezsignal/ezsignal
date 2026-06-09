@@ -26,6 +26,7 @@ export type SignalRow = {
   id: string;
   brandId: BrandId;
   pair: string;
+  mode: string;
   action: "buy" | "sell";
   entry: number;
   stopLoss: number | null;
@@ -251,7 +252,7 @@ export async function loadSignalsPageData(input: {
 
   let query = supabase
     .from("signals")
-    .select("id, brand_id, pair, action, entry, stop_loss, take_profit_1, status, created_at")
+    .select("id, brand_id, pair, mode, action, entry, stop_loss, take_profit_1, status, created_at")
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -268,6 +269,7 @@ export async function loadSignalsPageData(input: {
     id: String(row.id),
     brandId: String(row.brand_id) as BrandId,
     pair: String(row.pair ?? "XAUUSD"),
+    mode: String(row.mode ?? "scalping"),
     action: String(row.action ?? "buy") as "buy" | "sell",
     entry: Number(row.entry ?? 0),
     stopLoss: row.stop_loss === null ? null : Number(row.stop_loss),

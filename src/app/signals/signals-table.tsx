@@ -8,6 +8,7 @@ type SignalRow = {
   id: string;
   brandId: string;
   pair: string;
+  mode: string;
   action: "buy" | "sell";
   entry: number;
   stopLoss: number | null;
@@ -123,6 +124,7 @@ export default function SignalsTable({ rows }: { rows: SignalRow[] }) {
               <th>Brand</th>
               <th>Pair</th>
               <th>Action</th>
+              <th>Type</th>
               <th>Entry</th>
               <th>SL</th>
               <th>TP1</th>
@@ -138,6 +140,7 @@ export default function SignalsTable({ rows }: { rows: SignalRow[] }) {
                 <td className={row.action === "buy" ? "text-teal-700" : "text-rose-700"}>
                   {row.action.toUpperCase()}
                 </td>
+                <td className="mono text-xs uppercase text-slate-500">{row.mode}</td>
                 <td>{row.entry}</td>
                 <td>{row.stopLoss ?? "-"}</td>
                 <td>{row.takeProfit1 ?? "-"}</td>
@@ -147,7 +150,7 @@ export default function SignalsTable({ rows }: { rows: SignalRow[] }) {
             ))}
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={8} className="text-center text-xs font-bold text-slate-500">
+                <td colSpan={9} className="text-center text-xs font-bold text-slate-500">
                   {rows.length === 0 ? "No signal data yet." : "No signals match the filter."}
                 </td>
               </tr>
