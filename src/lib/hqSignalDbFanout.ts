@@ -720,71 +720,10 @@ async function processSignalClosed(args: {
   outcomeRaw: SignalOutcome | null;
   performanceSettings: PerformanceSettings;
 }): Promise<BrandResult> {
-  const { supabase, brandId, pair, mode, closePrice, outcomeRaw, performanceSettings } = args;
-  const currentRes = await findActiveSignal(supabase, brandId, pair, mode);
-  if (currentRes.error) return { brandId, event: "signal_closed", status: "failed", reason: currentRes.error };
-  if (!currentRes.row) return { brandId, event: "signal_closed", status: "skipped", reason: "no_active_signal_found" };
-
-  const current = currentRes.row;
-  const points = current.type === "buy" ? closePrice - current.entry_target : current.entry_target - closePrice;
-  const realizedPips = points * GOLD_PIPS_MULTIPLIER;
-  const peakPips = Math.max(current.max_floating_pips ?? 0, realizedPips);
-  const classifiedOutcome =
-    outcomeRaw ??
-    classifyCycleOutcome({
-      mode,
-      performanceSettings,
-      type: current.type,
-      entryTarget: current.entry_target,
-      closePrice,
-      sl: current.sl,
-      tp1: current.tp1,
-      tp2: current.tp2,
-      tp3: current.tp3,
-      peakPips,
-    });
-  const historyPips = computeStoredNetPips({
-    bePercentage: performanceSettings.bePercentage,
-    outcome: classifiedOutcome,
-    realizedPips,
-    peakPips,
-  });
-
-  const { error: closeError } = await supabase
-    .from("signals")
-    .update({ live_price: closePrice, status: "closed", max_floating_pips: peakPips, updated_at: new Date().toISOString() })
-    .eq("id", current.id);
-  if (closeError) return { brandId, event: "signal_closed", status: "failed", reason: closeError.message };
-
-  try {
-    const performanceLogId = await insertPerformanceLog(supabase, {
-      brandId,
-      signalId: current.id,
-      pair,
-      mode,
-      action: current.type,
-      outcome: classifiedOutcome,
-      points: historyPips,
-      price: closePrice,
-      netPips: historyPips,
-      peakPips,
-    });
-    return {
-      brandId,
-      event: "signal_closed",
-      status: "processed",
-      signalId: current.id,
-      performanceLogId,
-      outcome: classifiedOutcome,
-    };
-  } catch (error) {
-    return {
-      brandId,
-      event: "signal_closed",
-      status: "failed",
-      reason: error instanceof Error ? error.message : "Failed to insert performance log",
-    };
-  }
+  // v2 model: a signal closes ONLY via price-based TP3/SL (price_update) or the 30-min
+  // force-close on a new signal. Ignore the source explicit signal_closed so it cannot
+  // close a still-running signal early (esp. scaled brands at TP1/TP2 milestones).
+  return { brandId: args.brandId, event: "signal_closed", status: "skipped", reason: "closes_handled_by_price_updates" };
 }
 
 async function processSignalOpen(args: {
