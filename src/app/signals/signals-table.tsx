@@ -19,6 +19,7 @@ type SignalRow = {
 
 type StatusFilter = "all" | "active" | "closed" | "cancelled";
 type ActionFilter = "all" | "buy" | "sell";
+type ModeFilter = "all" | "scalping" | "intraday";
 
 const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -33,6 +34,12 @@ const ACTION_FILTERS: { key: ActionFilter; label: string }[] = [
   { key: "sell", label: "Sell" },
 ];
 
+const MODE_FILTERS: { key: ModeFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "scalping", label: "Scalping" },
+  { key: "intraday", label: "Intraday" },
+];
+
 function dateText(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
@@ -42,6 +49,7 @@ function dateText(value: string) {
 export default function SignalsTable({ rows }: { rows: SignalRow[] }) {
   const [status, setStatus] = useState<StatusFilter>("all");
   const [action, setAction] = useState<ActionFilter>("all");
+  const [mode, setMode] = useState<ModeFilter>("all");
   const [dateRange, setDateRange] = useState<DateRange>("all");
   const [query, setQuery] = useState("");
 
@@ -50,6 +58,7 @@ export default function SignalsTable({ rows }: { rows: SignalRow[] }) {
     return rows.filter((row) => {
       if (status !== "all" && row.status !== status) return false;
       if (action !== "all" && row.action !== action) return false;
+      if (mode !== "all" && row.mode !== mode) return false;
       if (!inDateRange(row.createdAt, dateRange)) return false;
       if (q.length > 0) {
         const haystack = `${row.brandId} ${row.pair} ${row.status} ${row.action}`.toLowerCase();
@@ -57,7 +66,7 @@ export default function SignalsTable({ rows }: { rows: SignalRow[] }) {
       }
       return true;
     });
-  }, [rows, status, action, dateRange, query]);
+  }, [rows, status, action, mode, dateRange, query]);
 
   return (
     <section className="panel p-4">
@@ -90,6 +99,18 @@ export default function SignalsTable({ rows }: { rows: SignalRow[] }) {
             {ACTION_FILTERS.map((item) => (
               <option key={item.key} value={item.key}>
                 {item.key === "all" ? "All actions" : item.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={mode}
+            onChange={(event) => setMode(event.target.value as ModeFilter)}
+            className="hq-filter-select"
+            aria-label="Filter by mode"
+          >
+            {MODE_FILTERS.map((item) => (
+              <option key={item.key} value={item.key}>
+                {item.key === "all" ? "All modes" : item.label}
               </option>
             ))}
           </select>
