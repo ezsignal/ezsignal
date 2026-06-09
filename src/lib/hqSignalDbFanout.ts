@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BrandId } from "@/lib/registry";
 import { loadBrandPerformanceSettingsMap } from "@/lib/hqBrandPerformanceSettings";
+import { sendBrandWebPush } from "@/lib/web-push";
 
 const GOLD_PIPS_MULTIPLIER = 10;
 const SIGNAL_DUPLICATE_COOLDOWN_SECONDS = Number(process.env.SIGNAL_DUPLICATE_COOLDOWN_SECONDS ?? "90");
@@ -631,6 +632,19 @@ async function processPriceUpdate(args: {
   const points = current.type === "buy" ? livePrice - current.entry_target : current.entry_target - livePrice;
   const currentPips = points * GOLD_PIPS_MULTIPLIER;
   const maxFloatingPips = Math.max(current.max_floating_pips ?? 0, currentPips);
+  // Server-side TP-milestone push (works app-closed): fire once per TP when the stored
+  // peak first crosses the level (prev peak below, new peak at/above). Per-brand scaled levels.
+  const prevPeakPips = current.max_floating_pips ?? 0;
+  for (const tp of [{ n: 1, lvl: current.tp1 }, { n: 2, lvl: current.tp2 }, { n: 3, lvl: current.tp3 }]) {
+    if (tp.lvl === null) continue;
+    const tpPips = Math.abs(tp.lvl - current.entry_target) * GOLD_PIPS_MULTIPLIER;
+    if (maxFloatingPips >= tpPips && prevPeakPips < tpPips) {
+      await sendBrandWebPush(supabase, brandId, {
+        title: `TP${tp.n} Hit`,
+        body: `${current.type.toUpperCase()} XAUUSD | +${tpPips.toFixed(1)} pips`,
+      });
+    }
+  }
   const hitOutcome = inferHitOutcome({
     type: current.type,
     livePrice,
@@ -680,6 +694,12 @@ async function processPriceUpdate(args: {
     })
     .eq("id", current.id);
   if (closeError) return { brandId, event: "price_update", status: "failed", reason: closeError.message };
+  if (classifiedOutcome === "sl") {
+    await sendBrandWebPush(supabase, brandId, {
+      title: "Stop Loss Hit",
+      body: `${current.type.toUpperCase()} XAUUSD | ${historyPips.toFixed(1)} pips`,
+    });
+  }
 
   try {
     const performanceLogId = await insertPerformanceLog(supabase, {
@@ -881,6 +901,12 @@ async function processSignalOpen(args: {
 
   if (error) return { brandId, event: "signal", status: "failed", reason: error.message };
   const signalId = String((data as Record<string, unknown>).id);
+  if (finalStatus === "active") {
+    await sendBrandWebPush(supabase, brandId, {
+      title: `New ${mode.toUpperCase()} Signal`,
+      body: `${type.toUpperCase()} @ ${entryTarget.toFixed(2)} | TP ${scaledLevels.tp1.toFixed(2)}/${scaledLevels.tp2.toFixed(2)}/${scaledLevels.tp3 !== null ? scaledLevels.tp3.toFixed(2) : "-"} | SL ${scaledLevels.sl.toFixed(2)}`,
+    });
+  }
 
   if (!immediateOutcome) {
     return { brandId, event: "signal", status: "processed", signalId };
