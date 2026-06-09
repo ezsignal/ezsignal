@@ -292,6 +292,7 @@ function getModeBucketBoundsIso(mode: SignalMode, anchor = new Date()) {
 
 function chooseOutcome(existing: SignalOutcome, next: SignalOutcome) {
   const rank: Record<SignalOutcome, number> = {
+    exp: 0,
     sl: 0,
     be: 1,
     tp1: 2,
@@ -449,7 +450,8 @@ async function insertPerformanceLog(supabase: SupabaseClient, row: {
       existingOutcomeRaw === "tp2" ||
       existingOutcomeRaw === "tp3" ||
       existingOutcomeRaw === "be" ||
-      existingOutcomeRaw === "sl"
+      existingOutcomeRaw === "sl" ||
+      existingOutcomeRaw === "exp"
         ? (existingOutcomeRaw as SignalOutcome)
         : row.outcome;
 
@@ -498,7 +500,8 @@ async function insertPerformanceLog(supabase: SupabaseClient, row: {
       existingOutcomeRaw === "tp2" ||
       existingOutcomeRaw === "tp3" ||
       existingOutcomeRaw === "be" ||
-      existingOutcomeRaw === "sl"
+      existingOutcomeRaw === "sl" ||
+      existingOutcomeRaw === "exp"
         ? (existingOutcomeRaw as SignalOutcome)
         : row.outcome;
 
