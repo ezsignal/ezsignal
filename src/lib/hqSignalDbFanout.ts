@@ -264,7 +264,16 @@ function classifyCycleOutcome(args: {
   return "exp"; // 30-min cycle ended with no TP, no SL, no real movement
 }
 
-function computeStoredNetPips(args: { outcome: SignalOutcome; realizedPips: number; peakPips: number; bePercentage: number }) {
+function computeStoredNetPips(args: {
+  outcome: SignalOutcome;
+  realizedPips: number;
+  peakPips: number;
+  bePercentage: number;
+  entryTarget: number;
+  tp1: number;
+  tp2: number;
+  tp3: number | null;
+}) {
   if (args.outcome === "sl") {
     return Number((-Math.abs(args.realizedPips)).toFixed(1));
   }
@@ -273,6 +282,12 @@ function computeStoredNetPips(args: { outcome: SignalOutcome; realizedPips: numb
   }
   if (args.outcome === "exp") {
     return 0;
+  }
+  // TP outcome: P&L = the SECURED TP level distance (not the raw peak), so the signal
+  // detail tallies with the outcome (TP1 -> TP1 pips, not a higher peak that did not lock).
+  const tpLevel = args.outcome === "tp3" ? args.tp3 : args.outcome === "tp2" ? args.tp2 : args.tp1;
+  if (tpLevel !== null) {
+    return Number((Math.abs(tpLevel - args.entryTarget) * GOLD_PIPS_MULTIPLIER).toFixed(1));
   }
   return Number(Math.max(args.realizedPips, args.peakPips).toFixed(1));
 }
@@ -587,6 +602,10 @@ async function archivePreviousActiveSignal(args: {
     });
     const historyPips = computeStoredNetPips({
       bePercentage: performanceSettings.bePercentage,
+      entryTarget: previous.entry_target,
+      tp1: previous.tp1,
+      tp2: previous.tp2,
+      tp3: previous.tp3,
       outcome,
       realizedPips,
       peakPips,
@@ -679,6 +698,10 @@ async function processPriceUpdate(args: {
   });
   const historyPips = computeStoredNetPips({
     bePercentage: performanceSettings.bePercentage,
+    entryTarget: current.entry_target,
+    tp1: current.tp1,
+    tp2: current.tp2,
+    tp3: current.tp3,
     outcome: classifiedOutcome,
     realizedPips,
     peakPips,
@@ -917,6 +940,10 @@ async function processSignalOpen(args: {
   const peakPips = Math.max(0, realizedPips);
   const historyPips = computeStoredNetPips({
     bePercentage: performanceSettings.bePercentage,
+    entryTarget,
+    tp1: scaledLevels.tp1,
+    tp2: scaledLevels.tp2,
+    tp3: scaledLevels.tp3,
     outcome: immediateOutcome,
     realizedPips,
     peakPips,
