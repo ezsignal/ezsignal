@@ -13,7 +13,7 @@ const BRAND_PRICE_DISTANCE_MULTIPLIER: Partial<Record<BrandId, number>> = {
 type WebhookEvent = "signal" | "price_update" | "signal_closed";
 type SignalMode = "scalping" | "intraday";
 type SignalType = "buy" | "sell";
-type SignalOutcome = "tp1" | "tp2" | "tp3" | "be" | "sl";
+type SignalOutcome = "tp1" | "tp2" | "tp3" | "be" | "sl" | "exp";
 
 type PerformanceSettings = {
   bePercentage: number;
@@ -239,33 +239,28 @@ function classifyCycleOutcome(args: {
   peakPips: number;
   performanceSettings: PerformanceSettings;
 }): SignalOutcome {
-  const peakThreshold = args.mode === "intraday" ? args.performanceSettings.intradayPeakPips : args.performanceSettings.scalpingPeakPips;
-  const immediateHit = inferHitOutcome({
-    type: args.type,
-    livePrice: args.closePrice,
-    sl: args.sl,
-    tp1: args.tp1,
-    tp2: args.tp2,
-    tp3: args.tp3,
-  });
-
-  if (immediateHit === "tp1" || immediateHit === "tp2" || immediateHit === "tp3") {
-    return immediateHit;
-  }
-
-  if (immediateHit === "sl") {
-    if (args.peakPips <= peakThreshold) return "sl";
-    return "be";
-  }
-
-  const realizedPips =
-    args.type === "buy"
-      ? (args.closePrice - args.entryTarget) * GOLD_PIPS_MULTIPLIER
-      : (args.entryTarget - args.closePrice) * GOLD_PIPS_MULTIPLIER;
-
-  if (args.peakPips < peakThreshold && realizedPips <= 0) return "be";
-  if (realizedPips <= 0) return "be";
-  return "tp1";
+  const peakThreshold =
+    args.mode === "intraday" ? args.performanceSettings.intradayPeakPips : args.performanceSettings.scalpingPeakPips;
+  const tp1Pips = Math.abs(args.tp1 - args.entryTarget) * GOLD_PIPS_MULTIPLIER;
+  const tp2Pips = Math.abs(args.tp2 - args.entryTarget) * GOLD_PIPS_MULTIPLIER;
+  const tp3Pips = args.tp3 === null ? null : Math.abs(args.tp3 - args.entryTarget) * GOLD_PIPS_MULTIPLIER;
+  // Peak-based: the highest TP the run secured locks in, even if price later reversed.
+  if (tp3Pips !== null && args.peakPips >= tp3Pips) return "tp3";
+  if (args.peakPips >= tp2Pips) return "tp2";
+  if (args.peakPips >= tp1Pips) return "tp1";
+  // No TP secured by the peak.
+  const slHit =
+    inferHitOutcome({
+      type: args.type,
+      livePrice: args.closePrice,
+      sl: args.sl,
+      tp1: args.tp1,
+      tp2: args.tp2,
+      tp3: args.tp3,
+    }) === "sl";
+  if (args.peakPips >= peakThreshold) return "be"; // ran enough then gave it back
+  if (slHit) return "sl"; // stopped out without a meaningful run
+  return "exp"; // 30-min cycle ended with no TP, no SL, no real movement
 }
 
 function computeStoredNetPips(args: { outcome: SignalOutcome; realizedPips: number; peakPips: number; bePercentage: number }) {
@@ -274,6 +269,9 @@ function computeStoredNetPips(args: { outcome: SignalOutcome; realizedPips: numb
   }
   if (args.outcome === "be") {
     return Number(Math.max(0, args.peakPips * (args.bePercentage / 100)).toFixed(1));
+  }
+  if (args.outcome === "exp") {
+    return 0;
   }
   return Number(Math.max(args.realizedPips, args.peakPips).toFixed(1));
 }
