@@ -33,6 +33,7 @@ type SignalSnapshot = {
   tp2: number;
   tp3: number | null;
   max_floating_pips: number | null;
+  created_at: string | null;
 };
 
 type BrandResult = {
@@ -398,7 +399,7 @@ async function findActiveSignal(
   const { data, error } = await supabase
     .from("signals")
     .select(
-      "id, mode, type:action, entry_target:entry, live_price, sl:stop_loss, tp1:take_profit_1, tp2:take_profit_2, tp3:take_profit_3, max_floating_pips",
+      "id, mode, type:action, entry_target:entry, live_price, sl:stop_loss, tp1:take_profit_1, tp2:take_profit_2, tp3:take_profit_3, max_floating_pips, created_at",
     )
     .eq("brand_id", brandId)
     .eq("pair", pair)
@@ -424,6 +425,7 @@ async function findActiveSignal(
     tp2: asNumber(rowData.tp2) ?? 0,
     tp3: asNumber(rowData.tp3),
     max_floating_pips: asNumber(rowData.max_floating_pips),
+    created_at: typeof rowData.created_at === "string" ? rowData.created_at : null,
   };
   return { row, error: null };
 }
@@ -439,9 +441,14 @@ async function insertPerformanceLog(supabase: SupabaseClient, row: {
   price: number;
   netPips: number;
   peakPips: number;
+  openedAtIso?: string | null;
 }) {
-  const now = new Date();
-  const bounds = getModeBucketBoundsIso(row.mode, now);
+  // Stamp the log into the slot the signal OPENED in, not the moment it is
+  // archived/closed. Archiving happens when the NEXT signal opens (~30 min
+  // later), so anchoring on `now` shifted every result forward by one slot.
+  const openedAt = row.openedAtIso ? new Date(row.openedAtIso) : new Date();
+  const anchor = Number.isNaN(openedAt.getTime()) ? new Date() : openedAt;
+  const bounds = getModeBucketBoundsIso(row.mode, anchor);
   const bucketStartIso = bounds.fromIso;
   const roundedNet = Number(row.netPips.toFixed(1));
   const roundedPeak = Number(row.peakPips.toFixed(1));
@@ -628,6 +635,7 @@ async function archivePreviousActiveSignal(args: {
       price: closePrice,
       netPips: historyPips,
       peakPips,
+      openedAtIso: previous.created_at,
     });
     lastResult = { signalId: previous.id, performanceLogId };
   }
@@ -736,6 +744,7 @@ async function processPriceUpdate(args: {
       price: livePrice,
       netPips: historyPips,
       peakPips,
+      openedAtIso: current.created_at,
     });
     return {
       brandId,
