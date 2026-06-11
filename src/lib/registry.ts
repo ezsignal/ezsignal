@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type BrandId = "kafra" | "sarjan" | "richjoker" | "shinobi" | "kapitan" | "liza" | "mastery";
+export type BrandId = "kafra" | "sarjan" | "richjoker" | "shinobi" | "kapitan" | "liza" | "mastery" | "mrghost";
 
 export type BrandStatus = "core" | "synced" | "watch" | "draft";
 
@@ -204,6 +204,27 @@ export const brands: BrandRegistryItem[] = [
     telegramStatus: "Pending",
     lastDeploy: "today",
   },
+  {
+    id: "mrghost",
+    displayName: "MR GHOST",
+    canonicalName: "MR GHOST",
+    role: "White label",
+    domain: "mrghost.ezos.my",
+    github: "mrghostsignal/mrghostsignal",
+    vercelProject: "mrghostsignal",
+    localFolder: "MR GHOST",
+    supabaseGroup: "EZ SIGNAL HQ (shared)",
+    accent: "#94a3b8",
+    status: "draft",
+    parity: 0,
+    activeUsers: 0,
+    expiredUsers: 0,
+    keysIssued: 0,
+    signalsToday: 0,
+    revenueEstimate: "USD 0",
+    telegramStatus: "Pending",
+    lastDeploy: "—",
+  },
 ];
 
 export const hqModules: HqModule[] = [
@@ -280,6 +301,11 @@ export const parityBoard: Record<BrandId, BrandParityCheck[]> = {
     { id: "access-ui", label: "Access UI parity", status: "pass", note: "Live; KAFRA-based, electric-blue reskin" },
     { id: "package-links", label: "Package Links flow", status: "pass", note: "Shared API flow" },
     { id: "admin-header", label: "Admin header flow", status: "pass", note: "KAFRA-based admin header" },
+  ],
+  mrghost: [
+    { id: "access-ui", label: "Access UI parity", status: "watch", note: "Cloned from SARJAN; ghost reskin, pending live verify" },
+    { id: "package-links", label: "Package Links flow", status: "watch", note: "Inherited from SARJAN; pending deploy" },
+    { id: "admin-header", label: "Admin header flow", status: "watch", note: "Inherited from SARJAN; pending deploy" },
   ],
 };
 
