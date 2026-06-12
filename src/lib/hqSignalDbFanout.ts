@@ -443,13 +443,18 @@ async function insertPerformanceLog(supabase: SupabaseClient, row: {
   peakPips: number;
   openedAtIso?: string | null;
 }) {
-  // Stamp the log into the slot the signal OPENED in, not the moment it is
-  // archived/closed. Archiving happens when the NEXT signal opens (~30 min
-  // later), so anchoring on `now` shifted every result forward by one slot.
+  // Stamp the log at the signal's actual OPEN time (floored to the minute) — NOT
+  // `now` (archive moment), and NOT the mode bucket start. Anchoring on `now`
+  // shifted results forward a slot; and the 4h intraday bucket rounded perf logs
+  // HOURS before the signal even opened. Scalping opens at the 30-min slot
+  // boundary so its stamp stays clean; intraday now reflects the real open time.
   const openedAt = row.openedAtIso ? new Date(row.openedAtIso) : new Date();
   const anchor = Number.isNaN(openedAt.getTime()) ? new Date() : openedAt;
+  // `bounds` (the mode slot window) is still used below to find/merge an existing
+  // log in the same slot. The STAMP, however, is the real open time (floored to
+  // the minute) so intraday rows no longer land at the 4h bucket start.
   const bounds = getModeBucketBoundsIso(row.mode, anchor);
-  const bucketStartIso = bounds.fromIso;
+  const bucketStartIso = new Date(Math.floor(anchor.getTime() / 60000) * 60000).toISOString();
   const roundedNet = Number(row.netPips.toFixed(1));
   const roundedPeak = Number(row.peakPips.toFixed(1));
   const roundedPoints = Number(row.points.toFixed(1));
